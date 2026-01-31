@@ -1,0 +1,18 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./minio_data/d1:/data1
+      - ./minio_data/d2:/data2
+      - ./minio_data/d3:/data3
+      - ./minio_data/d4:/data4
+    environment:
+      MINIO_ROOT_USER: ${minIO_login}
+      MINIO_ROOT_PASSWORD: ${minIO_password}
+      MINIO_DRIVE_SYNC: "on"
+    command: server /data --console-address ":9001"
+    restart: always
