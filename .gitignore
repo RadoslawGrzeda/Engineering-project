@@ -6,3 +6,5 @@
 .env.development
 .env.test
 .env.production
+/apps/streamLit/.env
+/miniIO/.env
