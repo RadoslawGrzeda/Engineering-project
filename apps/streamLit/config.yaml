@@ -1,0 +1,19 @@
+cookie:
+  expiry_days: 30
+  key: COOKIE_KEY_PLACEHOLDER
+  name: portal_key
+
+credentials:
+  usernames:
+    USER_NAME_PLACEHOLDER:
+      email: jsmith@gmail.com
+      name: radoslaw
+      password: USER_PASSWORD_PLACEHOLDER
+      roles:
+      - editor
+    ADMIN_NAME_PLACEHOLDER:
+      email: ja@gmail.com
+      name: radoslaw
+      password: ADMIN_PASSWORD_PLACEHOLDER
+      roles:
+      - admin

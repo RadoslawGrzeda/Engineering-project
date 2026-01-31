@@ -1,0 +1,33 @@
+services:
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamlit
+    restart: always
+    networks:
+      - traefik_network
+    environment:
+      MINIO_ADDRESS: minio:9000
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASSWORD: ${MINIO_PASSWORD}
+      API_KEY: ${API_KEY}
+      name: ${name}
+      password: ${password}
+      admin_pass: ${admin_pass}
+      admin_name: ${admin_name}
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_network"
+      - "traefik.http.routers.streamlit.rule=Host(`streamlit.radoslawgrzeda.com`)"
+      - "traefik.http.routers.streamlit.entrypoints=websecure"
+      - "traefik.http.routers.streamlit.tls=true"
+      - "traefik.http.routers.streamlit.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.streamlit.service=streamlit-svc"
+      - "traefik.http.services.streamlit-svc.loadbalancer.server.port=8501"
+
+networks:
+  traefik_network:
+    external: true

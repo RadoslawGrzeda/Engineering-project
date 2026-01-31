@@ -1,0 +1,37 @@
+services:
+
+  minio:
+      image: minio/minio:latest
+      container_name: minio
+      restart: always
+      networks:
+        - traefik_network
+      volumes:
+        - ./minio_data:/data 
+      environment:
+        MINIO_ROOT_USER: ${MINIO_USER}
+        MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+        MINIO_BROWSER_REDIRECT_URL: https://minio-ui.${DOMAIN_NAME}
+      command: server /data --console-address ":9001"
+      labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_network"
+
+      # --- KONFIGURACJA API (Port 9000) ---
+      - "traefik.http.routers.minio-api.rule=Host(`minio-api.radoslawgrzeda.com`)"
+      - "traefik.http.routers.minio-api.entrypoints=websecure"
+      - "traefik.http.routers.minio-api.tls=true"
+      - "traefik.http.routers.minio-api.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.minio-api.service=minio-api-svc" 
+      - "traefik.http.services.minio-api-svc.loadbalancer.server.port=9000"
+
+      # --- KONFIGURACJA KONSOLI UI (Port 9001) ---
+      - "traefik.http.routers.minio-console.rule=Host(`minio-ui.radoslawgrzeda.com`)"
+      - "traefik.http.routers.minio-console.entrypoints=websecure"
+      - "traefik.http.routers.minio-console.tls=true"
+      - "traefik.http.routers.minio-console.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.minio-console.service=minio-console-svc"
+      - "traefik.http.services.minio-console-svc.loadbalancer.server.port=9001"
+networks:
+  traefik_network:
+    external: true
