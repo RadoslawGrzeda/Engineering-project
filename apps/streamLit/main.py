@@ -84,7 +84,9 @@ class streamLit_app:
             st.title('''
                 Witaj na stronie do ladowania plikow :)
             ''')
-            st.info(f'Zalogowany jako {st.session_state['name']} {st.session_state['roles']}')
+            name = st.session_state.get("name", "")
+            roles = st.session_state.get("roles", [])
+            st.info(f"Zalogowany jako {name} {roles}")
 
             database=st.radio('Temat przewodni ',['sklep','produkt'])
             if database=='sklep':
@@ -120,7 +122,7 @@ class streamLit_app:
                 if st.button('Wyslij'):
                     try:
                         # filename=uploaded_file.name+'_'+datetime.now().strftime('%Y%m%d%S')
-                        filename=f'{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}'
+                        filename=f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
                         upData=uploaded_file.getvalue()
                         if database =='sklep' and self.client.bucket_exists('sklep'):
                             text=self.client.upload_file(st.session_state['name'],database,filename,io.BytesIO(upData),len(upData),content_type='application/csv')
