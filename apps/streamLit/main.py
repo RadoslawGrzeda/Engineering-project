@@ -12,7 +12,7 @@ from datetime import datetime
 from schemas import Chief, Segment, Sector, Department, Category, DepartmentSectors
 from pydantic import BaseModel, ValidationError
 import pandas as pd
-from minIOClient import MinioClient
+from minio_client import MinioClient
 import structlog
 from streamlit_authenticator import Authenticate
 
