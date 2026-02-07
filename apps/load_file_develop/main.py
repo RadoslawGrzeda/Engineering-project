@@ -12,7 +12,7 @@ import psycopg2
 from dotenv import load_dotenv
 import datetime
 import os
-from shema import Segment, Sector, Department
+from shema import Segment, Sector, Department, Chief
 load_dotenv()
 
 
@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 class process_data:
     def __init__ (self, path: str):
         self.path = path
-        # self.connection_string = os.getenv("postgress_connection")
-        # self.engine = sa.create_engine(self.connection_string)
+        self.connection_string = os.getenv("postgress_connection")
+        self.engine = sa.create_engine(self.connection_string)
     
+
     def validate_shape(self, shape:Type[T]):
         records:   List[T] = []
         errors: List[Tuple[int,str]] = []
@@ -52,20 +53,21 @@ class process_data:
 
         if errors:
             logger.error(f"Validation errors found: {len(errors)}, {[i for  i in errors]}")
-        
-        # duplicates = set()
-        # seen = set()
-        # for s in records:
-        #     if s.model_dump()[0] in seen:
-        #         duplicates.add(s.model_dump()[0])
-        #     else:
-        #         seen.add(s.model_dump()[0])
 
-        # if duplicates:
-        #     logger.warning(f"Duplicate segment_id found: {sorted(duplicates)[:20]} (count={len(duplicates)})")
-        # else:
-        #     logger.info("No duplicate segment_id found.")
+        '''
+        duplicates = set()
+        seen = set()
+        for s in records:
+            if s.model_dump()[0] in seen:
+                duplicates.add(s.model_dump()[0])
+            else:
+                seen.add(s.model_dump()[0])
 
+        if duplicates:
+            logger.warning(f"Duplicate segment_id found: {sorted(duplicates)[:20]} (count={len(duplicates)})")
+        else:
+            logger.info("No duplicate segment_id found.")
+        '''
         df=pd.DataFrame([s.model_dump() for s in records])
         return df, errors
 
@@ -76,21 +78,22 @@ class process_data:
             'sector': self._load_sector,
             'department': self._load_department,
             'segment': self._load_segment,
-        }
-                  
-        
+        }        
         if table_name not in handler_map:
             logger.error(f"Load to DB not implemented for table: {table_name}")
             return
         handler_map[table_name](df)
 
+
     def _load_sector(self, df: pd.DataFrame) -> None:
+        source_file=self.path
         sql=text(f"""
-                    INSERT INTO sector (sector_id, sector, sector_code)
-                    VALUES (:sector_id, :sector, :sector_code)
+                    INSERT INTO sector (sector_id, sector_name, sector_code,source_file)
+                    VALUES (:sector_id, :sector_name, :sector_code,{source_file!r})
                     ON CONFLICT (sector_id) DO UPDATE SET
-                        sector = EXCLUDED.sector,
-                        sector_code = EXCLUDED.sector_code;
+                        sector_name = EXCLUDED.sector_name,
+                        sector_code = EXCLUDED.sector_code,
+                        source_file = EXCLUDED.source_file;
                     """)
                     
         records=df.to_dict(orient='records')
@@ -103,17 +106,37 @@ class process_data:
             except Exception as e:
                 logger.error(f"Error inserting records into sector: {e}")
 
-    def _load_department(self, df: pd.DataFrame) -> None:
-          sql=text(f"""
-                    INSERT INTO department (department_id, department_name)
-                    VALUES (:department_id, :department_name)
-                    ON CONFLICT (department_id) DO UPDATE SET
-                        department_name = EXCLUDED.department_name;
-                    """)
-          
-          records=df.to_dict(orient='records')
 
-          with self.engine.begin() as conn:
+    def _get_existing_sectors(self) -> set[int]:
+        with self.engine.begin() as conn:
+            rows=conn.execute(text("SELECT sector_id FROM sector"))
+        return set(row[0] for row in rows)
+    
+
+    def _load_department(self, df: pd.DataFrame) -> None:
+        source_file=self.path
+
+        existing_sectors = self._get_existing_sectors()
+        invalid = df[~df['sector_id'].isin(existing_sectors)].copy()
+        valid = df[df['sector_id'].isin(existing_sectors)].copy()
+
+
+        sql=text(f"""
+                    INSERT INTO department (department_id, department_name,sector_id,source_file)
+                    VALUES (:department_id, :department_name, :sector_id, {source_file!r})
+                    ON CONFLICT (department_id) DO UPDATE SET
+                        department_name = EXCLUDED.department_name,
+                        sector_id = EXCLUDED.sector_id,
+                        source_file = EXCLUDED.source_file;
+                    """)
+        
+
+        records=valid.to_dict(orient='records')
+
+        if not valid.empty: 
+            logger.warning(f"Invalid sector_id found: {invalid['sector_id'].unique()}")
+
+        with self.engine.begin() as conn:
                 try: 
                     logging.info(f"Inserting records into department...")
                     conn.execute(sql, records)
@@ -121,17 +144,32 @@ class process_data:
                 except Exception as e:
                     logger.error(f"Error inserting records into department: {e}")
 
-    def _load_segment(self,pd:pd.DataFrame) -> None:
+
+    def _load_segment(self, df:pd.DataFrame) -> None:
+
+        existing_sectors = self._get_existing_sectors()
+        invalid = df[~df['sector_id'].isin(existing_sectors)].copy()
+        valid = df[df['sector_id'].isin(existing_sectors)].copy()
+
+        source_file=self.path
+
         sql=text(f"""
-                    INSERT INTO segment (segment_id, segment, segment_code, sector_id)
-                    VALUES (:segment_id, :segment, :segment_code, :sector_id)
+                    INSERT INTO segment (segment_id, segment_code, segment_name, sector_id, source_file)
+                    VALUES (:segment_id, :segment_code, :segment_name, :sector_id, :source_file)
                     ON CONFLICT (segment_id) DO UPDATE SET
-                        segment = EXCLUDED.segment,
                         segment_code = EXCLUDED.segment_code,
-                        sector_id = EXCLUDED.sector_id;
+                        segment_name = EXCLUDED.segment_name,
+                        sector_id = EXCLUDED.sector_id,
+                        source_file = EXCLUDED.source_file;
                     """)
 
-        records=pd.to_dict(orient='records')
+        records=valid.to_dict(orient='records')
+        for record in records:
+            record['source_file']=source_file
+
+        if not valid.empty: 
+            logger.warning(f"Invalid sector_id found: {invalid['sector_id'].unique()}")
+            
         with self.engine.begin() as conn:
             try: 
                 logging.info(f"Inserting records into segment...")
@@ -140,46 +178,30 @@ class process_data:
             except Exception as e:
                 logger.error(f"Error inserting records into segment: {e}")
 
-'''
+
     def _load_chief(self, df: pd.DataFrame) -> None:
-        sqlUpdate=text(f"""
-                    UPDATE segment_chief SET
-                    is_current = False,
-                    date_end = :today
-                    Where 
-                    segment_id = :segment_id
-                    AND
-                    chief_id <> :chief_id AND is_current = TRUE
-                    """)
-        ## segment_id, chief_id, is_current, date_start, date_end
-        sqlINSERT = text(f"""
-                    INSERT INTO segment_chief (segment_id, chief_id, is_current, date_start, date_end)
-                    SELECT :segment_id, :chief_id, :is_current, :date_start, :date_end
-                    Where not exists ( select 1 
-                    from segment_chief sc
-                    where sc.chief_id=:chief_id and sc.segment_id = :segment_id and sc.is_current=TRUE
-                    );
-                    """)
-                
-        ## chief_id, chief_first_name, chief_last_name, chief_email, chief_phone
+        
         sql = text(f"""
-                    INSERT INTO chief (chief_id, chief_first_name, chief_last_name, chief_email, chief_phone)
-                    VALUES (:chief_id, :chief_first_name, :chief_last_name, :chief_email, :chief_phone)
+                    INSERT INTO chief (chief_id, chief_first_name, chief_last_name, email_address, phone_number,source_file)
+                    VALUES (:chief_id, :chief_first_name, :chief_last_name, :chief_email, :chief_phone, :source_file)
                     ON CONFLICT (chief_id) DO UPDATE SET
-                    chief_first_name = EXCLUDED.chief_first_name,
-                    chief_last_name = EXCLUDED.chief_last_name,
-                    chief_email = EXCLUDED.chief_email,
-                    chief_phone = EXCLUDED.chief_phone
-                    ;
+                    email_address = EXCLUDED.email_address,
+                    phone_number = EXCLUDED.phone_number,
+                    source_file = EXCLUDED.source_file
+                        ;
                     """)
         
+        source_file=self.path
+
         today=datetime.date.today()
+        df_chief=df.copy()
+        df_chief['source_file']=source_file
+
+        # df_chief=df[['chief_id', 'chief_first_name', 'chief_last_name', 'chief_email', 'chief_phone']].copy()
+        # df_chief=df_chief.drop_duplicates(subset=['chief_id'], keep='last')
         
-        df_chief=df[['chief_id', 'chief_first_name', 'chief_last_name', 'chief_email', 'chief_phone']].copy()
-        df_chief=df_chief.drop_duplicates(subset=['chief_id'], keep='last')
-        
-        df_segment_chief=df[['segment_id', 'chief_id','is_current','date_start','date_end']].copy()
-        df_segment_chief=df_segment_chief.drop_duplicates(subset=['segment_id'], keep='last')
+        # df_segment_chief=df[['segment_id', 'chief_id','is_current','date_start','date_end']].copy()
+        # df_segment_chief=df_segment_chief.drop_duplicates(subset=['segment_id'], keep='last')
 
         with self.engine.begin() as conn:
             try: 
@@ -189,34 +211,23 @@ class process_data:
                 conn.execute(sql, record)
                 logging.info(f"Inserted chief records successfully.")
                 
-                ## update segment_chief
-                conn.execute(sqlUpdate, [{'today': today, **rec} for rec in df_segment_chief.to_dict(orient='records')])
-                logging.info(f"Updated segment_chief records successfully, start insertion into segment_chief...")
+                # ## update segment_chief
+                # conn.execute(sqlUpdate, [{'today': today, **rec} for rec in df_segment_chief.to_dict(orient='records')])
+                # logging.info(f"Updated segment_chief records successfully, start insertion into segment_chief...")
                 
-                ## segment_chief
-                record_segment_chief=df_segment_chief.to_dict(orient='records')                                
-                conn.execute(sqlINSERT, record_segment_chief)
-                logging.info(f"Inserted record_segment_chief  successfully.")
+                # ## segment_chief
+                # record_segment_chief=df_segment_chief.to_dict(orient='records')                                
+                # conn.execute(sqlINSERT, record_segment_chief)
+                # logging.info(f"Inserted record_segment_chief  successfully.")
 
             except Exception as e:
                 logger.error(f"Error inserting records into chief: {e}")
 
+path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/new_chief.csv'
+process_data=process_data(path)
+df_chief, errors=process_data.validate_shape(Chief)
+process_data.load_to_db(df_chief, 'chief')
+# print(errors)
 
 
 
-chief_path='/Users/radoslaw/Desktop/Python/products/chief.csv'
-# chief_class=processData(chief_path)
-# df_chief, errors=chief_class.validate_shape(Chief)
-# chief_class.load_to_db(df_chief, 'chief')
-segment_path='/Users/radoslaw/Desktop/Python/products/segment.csv'
-segment_class=processData(segment_path)
-segments, errors=segment_class.validate_shape(Segment)
-segment_class.load_to_db(segments, 'segment')
-# if errors:
-#     for line_no, err in errors:
-#         logger.error(f"Line {line_no}: {err}")
-# else:
-    # logger.info("All records are valid.")
-
-# print(segments)
-'''
