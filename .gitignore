@@ -8,3 +8,4 @@
 .env.production
 /apps/streamLit/.env
 /miniIO/.env
+apps/load_file_develop/data/
