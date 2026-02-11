@@ -1,3 +1,4 @@
+from multiprocessing import Value
 from pydantic import BaseModel, Field, EmailStr ,field_validator
 from pydantic_extra_types.phone_numbers import PhoneNumber
 from typing import List, Optional   
@@ -20,8 +21,24 @@ class Segment(BaseModel):
     segment_id: int = Field(..., gt=0)
     segment_code: str = Field(...)
     segment_name: str = Field(...,min_length=1,max_length=100)
-    # chief_id: str = Field(..., alias='chief_id')
+    chief_id: str = Field(...)
     sector_id: int = Field(..., gt=0)
+
+    @field_validator('chief_id')
+    @classmethod
+    def validate_chief_id(cls, v):
+        try:
+            return v if re.match(r'^CH[0-9]{3}$', v) else ValueError(f"Invalid segment id format: {v}")
+        except Exception as e:
+            raise ValueError(f"Invalid chief id format: {v}. Error: {str(e)}")
+
+    @field_validator('segment_code')
+    @classmethod
+    def validate_segment_code(cls, v):
+        try:
+            return v if re.match(r'[A-Z]+',v) else ValueError(f"Invalid segment code format: {v}")
+        except Exception as e:
+            raise ValueError(f"Invalid segment code format: {v}. Error: {str(e)}")
 
 class Chief(BaseModel):
     chief_id: str = Field(...)
