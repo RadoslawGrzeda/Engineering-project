@@ -8,21 +8,37 @@ import re
 from email_validator import validate_email, EmailNotValidError
 
 class Department(BaseModel):
-    department_id: int = Field(..., gt=0)
-    department_name: str = Field(...,min_length=1,max_length=100)
-    sector_id: int   = Field(..., gt=0)
+    department_id : int = Field(..., gt=0)
+    department_name : str = Field(...,min_length=1,max_length=100)
+    sector_id : int   = Field(..., gt=0)
 
 class Sector(BaseModel):
-    sector_id: int = Field(..., gt=0,)
-    sector_name: str = Field(...,min_length=1)
-    sector_code: str = Field(...)
+    sector_id : int = Field(..., gt=0,)
+    sector_name : str = Field(...,min_length=1)
+    sector_code : str = Field(...)
+
+class PosInformation(BaseModel):
+    # pos_information_id : int =Field(..., gt=0)
+    art_key : int = Field(...,gt=2000)
+    ean : str = Field(...,)
+    vat_rate : float = Field(...,gt=0,le=1)
+    price_net : float = Field(...,gt=0)
+    price_gross : float = Field(...,gt=0)
+    
+    @field_validator('ean')
+    @classmethod
+    def validate_ean(cls, v):
+        try:
+            return v if len(v)==13 else ValueError(f"Invalid ean format: {v}")
+        except Exception as e:
+            raise ValueError(f"Invalid ean format: {v}. Error: {str(e)}")
 
 class Segment(BaseModel):
-    segment_id: int = Field(..., gt=0)
-    segment_code: str = Field(...)
-    segment_name: str = Field(...,min_length=1,max_length=100)
-    chief_id: str = Field(...)
-    sector_id: int = Field(..., gt=0)
+    segment_id : int = Field(..., gt=0)
+    segment_code : str = Field(...)
+    segment_name : str = Field(...,min_length=1,max_length=100)
+    chief_id : str = Field(...)
+    sector_id : int = Field(..., gt=0)
 
     @field_validator('chief_id')
     @classmethod
