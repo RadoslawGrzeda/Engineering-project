@@ -12,7 +12,7 @@ import psycopg2
 from dotenv import load_dotenv
 import datetime
 import os
-from shema import Segment, Sector, Department, Chief
+from shema import Segment, Sector, Department, Chief, PosInformation
 load_dotenv()
 
 
@@ -78,6 +78,7 @@ class process_data:
             'sector': self._load_sector,
             'department': self._load_department,
             'segment': self._load_segment,
+            'pos_information': self._load_pos_information,
         }        
         if table_name not in handler_map:
             logger.error(f"Load to DB not implemented for table: {table_name}")
@@ -248,15 +249,17 @@ class process_data:
     
     def _load_contractor(self, df: pd.DataFrame) -> None:
 
-        # contractor_id,contractor_name,brand,contact_phone_number,contact_phone_email,address
+        # contractor_id,contractor_name,contact_phone_number,contact_email,address
         sql = text(f'''
-        INSERT INTO contractor (contractor_id, contractor_name, contractor_email, contractor_phone, source_file)
-        VALUES (:contractor_id, :contractor_name, :contractor_email, :contractor_phone, :source_file)
+        INSERT INTO contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email, contractor_address, source_file,created_at,updated_ad)
+        VALUES (:contractor_id, :contractor_name, :contractor_phone_number, :contractor_email, :contractor_address, :source_file, :created_at, :updated_ad)
         ON CONFLICT (contractor_id) DO UPDATE SET
         contractor_name = EXCLUDED.contractor_name,
+        contractor_phone_number = EXCLUDED.contractor_phone_number,
+        contractor_address = EXCLUDED.contractor_address,
         contractor_email = EXCLUDED.contractor_email,
-        contractor_phone = EXCLUDED.contractor_phone,
         source_file = EXCLUDED.source_file;
+        updated_at = current_timestamp;
         ''')
         source_file=self.path
 
@@ -270,12 +273,70 @@ class process_data:
             except Exception as e:
                 logger.error(f"Error inserting records into contractor: {e}")
 
+    def _load_pos_information(self, df:pd.DataFrame) -> None:
+        # pos_information_id,art_key,ean,vat_rate,price_net,price_gross,is_current,date_start,date_end
+        # source_file=self.path
+        source_file="test.csv"
+
+        update_sql = text(f'''
+            UPDATE  pos_information
+            SET date_end = current_date,
+            is_current = False,
+            last_modified_date=current_date,
+            source_file=:source_file
+            where art_key=:art_key and ean != :ean 
+            and date_end is null;    
+            '''
+        )
+
+        insert_sql = text(f'''
+            INSERT INTO pos_information( art_key, ean, vat_rate, price_net,
+                                        price_gross,date_start,last_modified_date,source_file,is_current)
+            values (:art_key, :ean, :vat_rate, :price_net, :price_gross, :date_start, :last_modified_date, :source_file, :is_current
+            )
+            on conflict (art_key, ean) do update set 
+            vat_rate = :vat_rate,
+            price_net = :price_net,
+            price_gross = :price_gross,
+            source_file= :source_file,
+            last_modified_date=current_date,
+            is_current= :is_current
+        ''')
+        df=df[['art_key', 'ean', 'vat_rate', 'price_net', 'price_gross']]
+        new_df=df.copy().to_dict(orient='records')
+        for record in new_df:
+            record['date_start']=datetime.date(2023,1,1)
+            record['source_file']=source_file
+            record['last_modified_date']=datetime.datetime.now()
+            record['date_end']=None
+            record['is_current']=True
+    
+        update_rows=df.copy().to_dict(orient='records')
+        for record in update_rows:
+            record['source_file']=source_file
+            record['date_end']=datetime.date.today()
+            record['is_current']=False
+            record['last_modified_date']=datetime.datetime.now()
 
 
-path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/segment.csv'
+        with self.engine.begin() as conn:
+            try:
+                logging.info(f"Updating records in pos_information...")
+                conn.execute(update_sql, update_rows)
+                logging.info(f"Updated pos_information records successfully.")
+
+                logging.info(f"Inserting records into pos_information...")
+                conn.execute(insert_sql, new_df)
+                logging.info(f"Inserted pos_information records successfully.")
+
+            except Exception as e:
+                logger.error(f"Error inserting records into pos_information: {e}")
+
+
+path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos2.csv'
 process_data=process_data(path)
-df_segment, errors=process_data.validate_shape(Segment)
-process_data.load_to_db(df_segment, 'segment')
+df_pos_information, errors=process_data.validate_shape(PosInformation)
+process_data.load_to_db(df_pos_information, 'pos_information')
 # print(errors)
 
 
