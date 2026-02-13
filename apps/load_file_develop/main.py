@@ -12,7 +12,7 @@ import psycopg2
 from dotenv import load_dotenv
 import datetime
 import os
-from shema import Segment, Sector, Department, Chief, PosInformation
+from shema import Segment, Sector, Department, Chief, PosInformation, Product
 load_dotenv()
 
 
@@ -248,35 +248,79 @@ class process_data:
 
     
     def _load_contractor(self, df: pd.DataFrame) -> None:
-
-        # contractor_id,contractor_name,contact_phone_number,contact_email,address
         sql = text(f'''
-        INSERT INTO contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email, contractor_address, source_file,created_at,updated_ad)
-        VALUES (:contractor_id, :contractor_name, :contractor_phone_number, :contractor_email, :contractor_address, :source_file, :created_at, :updated_ad)
+        INSERT INTO contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email, contractor_address, source_file,created_at,updated_at)
+        VALUES (:contractor_id, :contractor_name, :contractor_phone_number, :contractor_email, :contractor_address, :source_file, :created_at, :updated_at)
         ON CONFLICT (contractor_id) DO UPDATE SET
         contractor_name = EXCLUDED.contractor_name,
         contractor_phone_number = EXCLUDED.contractor_phone_number,
         contractor_address = EXCLUDED.contractor_address,
         contractor_email = EXCLUDED.contractor_email,
-        source_file = EXCLUDED.source_file;
-        updated_at = current_timestamp;
         ''')
+
+        if 'contract_number' in df.columns:
+            contract_sql = text(f''' 
+            UPDATE contract 
+            SET is_current = False,
+            valid_to = current_date
+            where 
+            contractor_id = :contractor_id
+            and contract_number != :contract_number
+            and is_current = True
+            and valid_to is null;
+            ''')
+            insert_contract_sql = text(f'''
+            INSERT INTO contract (contractor_id,contract_number, signed_at,status,is_current,valid_from,valid_to,source_file,)
+            VALUES (:contractor_id, :contract_number, :signed_at, :status, :is_current, :valid_from, :valid_to, :source_file, :created_at, :updated_at)
+            ON CONFLICT (contractor_id,contract_number) DO UPDATE SET
+            signed_at = EXCLUDED.signed_at,
+            status = EXCLUDED.status,
+            valid_from = EXCLUDED.valid_from,
+            ''')
         source_file=self.path
+        # contractor_id,contractor_name,contact_phone_number,contact_phone_email,address,contract_number
+        contractor_df=df[['contractor_name', 'contact_phone_number', 'contact_phone_email', 'address']].copy()
+        for record in contractor_df:
+            record['created_at']=datetime.datetime.now()
+            record['updated_at']=datetime.datetime.now()
+            record['source_file']=source_file
+        contractor_df=contractor_df.to_dict(orient='records')
+
+        if 'contract_number' in df.columns:
+            update_contract_df=df[['contractor_id', 'contract_number']].copy()
+            update_contract_df['source_file']=source_file
+            update_contract_df=update_contract_df.to_dict(orient='records')
+
+            insert_df=update_contract_df.copy()
+            insert_df['signed_at']=datetime.datetime.now()
+            insert_df['status']='active'
+            insert_df['is_current']=True
+            insert_df['valid_from']=datetime.datetime.now()
+            insert_df['valid_to']=None
+            insert_df['source_file']=source_file
+            insert_df=insert_df.to_dict(orient='records')
+
+
+
+        update_contract_df=update_contract_df.to_dict(orient='records')
+
+
+
+        df['created_at']=datetime.datetime.now()
+        df['updated_at']=datetime.datetime.now()
+        df['source_file']=source_file
+        records=df.to_dict(orient='records')
 
         with self.engine.begin() as conn:
             try:
                 logging.info(f"Inserting records into contractor...")
-                record=df.to_dict(orient='records')
-                record['source_file']=source_file
-                conn.execute(sql, record)
+                conn.execute(sql, records)
                 logging.info(f"Inserted contractor records successfully.")
             except Exception as e:
                 logger.error(f"Error inserting records into contractor: {e}")
 
+
     def _load_pos_information(self, df:pd.DataFrame) -> None:
-        # pos_information_id,art_key,ean,vat_rate,price_net,price_gross,is_current,date_start,date_end
-        # source_file=self.path
-        source_file="test.csv"
 
         update_sql = text(f'''
             UPDATE  pos_information
@@ -302,8 +346,12 @@ class process_data:
             last_modified_date=current_date,
             is_current= :is_current
         ''')
+
+        source_file=self.path
+        
         df=df[['art_key', 'ean', 'vat_rate', 'price_net', 'price_gross']]
         new_df=df.copy().to_dict(orient='records')
+        
         for record in new_df:
             record['date_start']=datetime.date(2023,1,1)
             record['source_file']=source_file
@@ -333,10 +381,57 @@ class process_data:
                 logger.error(f"Error inserting records into pos_information: {e}")
 
 
-path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos2.csv'
+    def _load_product(self, df:pd.DataFrame) -> None:
+        sql = text(f'''
+        INSERT INTO product ( art_key, art_number, contractor_id, segment_id, department_id, brand, article_codification_date, last_modified_at, source_file)
+        VALUES (:art_key, :art_number, :contractor_id, :segment_id, :department_id, :brand, :article_codification_date, :last_modified_at, :source_file)
+        ON CONFLICT (art_key) DO UPDATE SET
+        art_number = EXCLUDED.art_number,
+        brand = EXCLUDED.brand,
+        article_codification_date = EXCLUDED.article_codification_date,
+        last_modified_at = EXCLUDED.last_modified_at,
+        source_file = EXCLUDED.source_file,
+        ''')
+        source_file=self.path()
+        # product_key,art_key,art_number,art_name,segment_id,departament_id,contractor_id,brand,pos_information_id,
+        # article_codification_date,is_current,start_date,end_date
+        new_df=df[['art_key', 'art_number', 'art_name', 'segment_id', 'departament_id', 'contractor_id', 'brand', 'pos_information_id', 'article_codification_date']].copy()
+        new_df=new_df.to_dict(orient='records')
+
+        sectors=self._get_existing_sectors
+        valid=new_df[new_df['sector_id'].isin(sectors)].copy()
+        invalid=new_df[~new_df['sector_id'].isin(sectors)].copy()
+
+
+
+
+
+        for record in valid:
+            record['source_file']=source_file
+            record['last_modified_at']=datetime.datetime.now()
+
+        with self.engine.begin() as conn:
+            try:
+                logging('Starting inserting value into product')
+                conn.execute(sql,valid)
+
+                logging('Successfully end inserting value into product')
+
+            except Exception as e:
+                logging(f"Error with inserting value into product{e}")
+                
+                
+                
+                
+                
+# path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos2.csv'
+# process_data=process_data(path)
+# df_pos_information, errors=process_data.validate_shape(PosInformation)
+# process_data.load_to_db(df_pos_information, 'pos_information')
+path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/prod_test.csv'
 process_data=process_data(path)
-df_pos_information, errors=process_data.validate_shape(PosInformation)
-process_data.load_to_db(df_pos_information, 'pos_information')
+df_product, errors=process_data.validate_shape(Product)
+process_data.load_to_db(df_product, 'product')
 # print(errors)
 
 

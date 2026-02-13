@@ -85,6 +85,52 @@ class Chief(BaseModel):
         except EmailNotValidError as e:
             raise ValueError(f"Invalid email address: {v}. Error: {str(e)}")
 
+class Product(BaseModel):
+    art_key : int = Field(...,gt=2000)
+    art_number : int = Field(...,gt=0)
+    art_name : str = Field(...)
+    segment_id : int = Field(..., gt=0)
+    departament_id : int = Field(..., gt=0)
+    contractor_id : int = Field(..., gt=0)
+    brand : str = Field(...)
+    pos_information_id : int = Field(..., gt=0)
+    article_codification_date : datetime.date = Field(...)
+
+    @field_validator('art_number')
+    @classmethod
+    def validate_art_number(cls, v):
+        try:
+            return v if re.match(r'^[0-9]+$', v) else ValueError(f"Invalid art number format: {v}")
+        except Exception as e:
+            raise ValueError(f"Invalid art number format: {v}. Error: {str(e)}")
+
+    @field_validator('art_key')
+    @classmethod
+    def validate_art_key(cls, v):
+        try:
+            return v if re.match(r'^[0-9]+$', v) else ValueError(f"Invalid art key format: {v}")
+        except Exception as e:
+            raise ValueError(f"Invalid art key format: {v}. Error: {str(e)}")
+
+# contractor_id,contractor_name,contact_phone_number,contact_phone_email,address,contract_number
+
+class Contractor(BaseModel):
+    # contractor_id : int = Field(..., gt=0)
+    contractor_name : str = Field(...,min_length=1,max_length=100)
+    contractor_phone_number : PhoneNumber = Field(...)
+    contractor_email : str = Field(...,min_length=5,max_length=100)
+    contractor_address : str = Field(...,min_length=1,max_length=100)
+    contract_number : str = Field()
+
+    @field_validator('contractor_email')
+    @classmethod
+    def validate_contractor_email(cls, v):
+        try:
+            regex=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            return v if re.match(regex, v) else ValueError(f"Invalid email format: {v}")
+        except EmailNotValidError as e:
+            raise ValueError(f"Invalid email address: {v}. Error: {str(e)}")
+
 '''
     @field_validator('date_end',mode='before')
     @classmethod
