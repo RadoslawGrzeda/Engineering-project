@@ -29,7 +29,11 @@ class PosInformation(BaseModel):
     @classmethod
     def validate_ean(cls, v):
         try:
-            return v if len(v)==13 else ValueError(f"Invalid ean format: {v}")
+            if len(v) != 13:
+                raise ValueError(f"Invalid ean format: {v}")
+            return v
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Invalid ean format: {v}. Error: {str(e)}")
 
@@ -44,7 +48,11 @@ class Segment(BaseModel):
     @classmethod
     def validate_chief_id(cls, v):
         try:
-            return v if re.match(r'^CH[0-9]{3}$', v) else ValueError(f"Invalid segment id format: {v}")
+            if not re.match(r'^CH[0-9]{3}$', v):
+                raise ValueError(f"Invalid segment id format: {v}")
+            return v
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Invalid chief id format: {v}. Error: {str(e)}")
 
@@ -52,7 +60,11 @@ class Segment(BaseModel):
     @classmethod
     def validate_segment_code(cls, v):
         try:
-            return v if re.match(r'[A-Z]+',v) else ValueError(f"Invalid segment code format: {v}")
+            if not re.match(r'[A-Z]+', v):
+                raise ValueError(f"Invalid segment code format: {v}")
+            return v
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Invalid segment code format: {v}. Error: {str(e)}")
 
@@ -72,7 +84,11 @@ class Chief(BaseModel):
     @classmethod
     def validate_chief_id(cls, v):
         try:
-            return v if re.match(r'^CH[0-9]{3}$', v) else ValueError(f"Invalid chief id format: {v}")
+            if not re.match(r'^CH[0-9]{3}$', v):
+                raise ValueError(f"Invalid chief id format: {v}")
+            return v
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Invalid chief id format: {v}. Error: {str(e)}")
 
@@ -80,15 +96,19 @@ class Chief(BaseModel):
     @classmethod
     def validate_chief_email(cls, v):
         try:
-            regex=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            return v if re.match(regex, v) else ValueError(f"Invalid email format: {v}")
+            regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(regex, v):
+                raise ValueError(f"Invalid email format: {v}")
+            return v
+        except ValueError:
+            raise
         except EmailNotValidError as e:
             raise ValueError(f"Invalid email address: {v}. Error: {str(e)}")
 
 class Product(BaseModel):
     art_key : int = Field(...,gt=2000)
-    art_number : int = Field(...,gt=0)
-    art_name : str = Field(...)
+    art_number : str = Field(..., min_length=1)
+    art_name : str = Field(..., min_length=1)
     segment_id : int = Field(..., gt=0)
     departament_id : int = Field(..., gt=0)
     contractor_id : int = Field(..., gt=0)
@@ -96,38 +116,42 @@ class Product(BaseModel):
     pos_information_id : int = Field(..., gt=0)
     article_codification_date : datetime.date = Field(...)
 
-    @field_validator('art_number')
-    @classmethod
-    def validate_art_number(cls, v):
-        try:
-            return v if re.match(r'^[0-9]+$', v) else ValueError(f"Invalid art number format: {v}")
-        except Exception as e:
-            raise ValueError(f"Invalid art number format: {v}. Error: {str(e)}")
+    # @field_validator('art_number')
+    # @classmethod
+    # def validate_art_number(cls, v):
+    #     try:
+    #         return v if re.match(r'^[0-9]+$', v) else ValueError(f"Invalid art number format: {v}")
+    #     except Exception as e:
+    #         raise ValueError(f"Invalid art number format: {v}. Error: {str(e)}")
 
-    @field_validator('art_key')
-    @classmethod
-    def validate_art_key(cls, v):
-        try:
-            return v if re.match(r'^[0-9]+$', v) else ValueError(f"Invalid art key format: {v}")
-        except Exception as e:
-            raise ValueError(f"Invalid art key format: {v}. Error: {str(e)}")
+    # @field_validator('art_key')
+    # @classmethod
+    # def validate_art_key(cls, v):
+    #     try:
+    #         return v if re.match(r'^[0-9]+$', v) else ValueError(f"Invalid art key format: {v}")
+    #     except Exception as e:
+    #         raise ValueError(f"Invalid art key format: {v}. Error: {str(e)}")
 
 # contractor_id,contractor_name,contact_phone_number,contact_phone_email,address,contract_number
 
 class Contractor(BaseModel):
-    # contractor_id : int = Field(..., gt=0)
+    contractor_id : int = Field()
     contractor_name : str = Field(...,min_length=1,max_length=100)
     contractor_phone_number : PhoneNumber = Field(...)
-    contractor_email : str = Field(...,min_length=5,max_length=100)
+    contractor_email_address : str = Field(...,min_length=5,max_length=100)
     contractor_address : str = Field(...,min_length=1,max_length=100)
     contract_number : str = Field()
 
-    @field_validator('contractor_email')
+    @field_validator('contractor_email_address')
     @classmethod
     def validate_contractor_email(cls, v):
         try:
-            regex=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            return v if re.match(regex, v) else ValueError(f"Invalid email format: {v}")
+            regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(regex, v):
+                raise ValueError(f"Invalid email format: {v}")
+            return v
+        except ValueError:
+            raise
         except EmailNotValidError as e:
             raise ValueError(f"Invalid email address: {v}. Error: {str(e)}")
 
