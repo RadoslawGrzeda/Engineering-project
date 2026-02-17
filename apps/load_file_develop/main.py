@@ -322,10 +322,26 @@ class process_data:
                 logger.error(f"Error inserting records into contractor: {e}")
 
 
-    def _get_existing_art_keys(self) -> set[str]:
+    def _get_existing_art_keys(self) -> set[int]:
         with self.engine.begin() as conn:
-            rows=conn.execute(text("SELECT art_key FROM product"))
+            rows = conn.execute(text("SELECT art_key FROM product"))
         return set(row[0] for row in rows)
+
+    def _get_current_pos_information(self, art_keys: set) -> pd.DataFrame:
+        """Bieżące wiersze pos_information (date_end IS NULL) dla podanych art_key."""
+        if not art_keys:
+            return pd.DataFrame(columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"])
+        with self.engine.begin() as conn:
+            placeholders = ",".join(str(k) for k in art_keys)
+            q = text(
+                "SELECT art_key, ean, price_net, price_gross, vat_rate "
+                "FROM pos_information WHERE date_end IS NULL AND art_key IN (" + placeholders + ")"
+            )
+            rows = conn.execute(q)
+            return pd.DataFrame(
+                rows.fetchall(),
+                columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"],
+            )
 
     def _get_existing_contractor_ids(self) -> set[int]:
         with self.engine.begin() as conn:
@@ -342,71 +358,84 @@ class process_data:
             rows = conn.execute(text("SELECT department_id FROM department"))
         return set(row[0] for row in rows)
 
-    def _load_pos_information(self, df:pd.DataFrame) -> None:
-        update_sql = text(f'''
-            UPDATE  pos_information
-            SET date_end = current_date,
-            is_current = False,
-            last_modified_date=current_date,
-            source_file=:source_file
-            where art_key=:art_key and ean != :ean 
-            and date_end is null;    
-            '''
-        )
-
-        insert_sql = text(f'''
-            INSERT INTO pos_information( art_key, ean, vat_rate, price_net,
-                                        price_gross,date_start,last_modified_date,source_file,is_current)
-            values (:art_key, :ean, :vat_rate, :price_net, :price_gross, :date_start, :last_modified_date, :source_file, :is_current
-            )
-            on conflict (art_key, ean) do update set 
-            vat_rate = :vat_rate,
-            price_net = :price_net,
-            price_gross = :price_gross,
-            source_file= :source_file,
-            last_modified_date=current_date,
-            is_current= :is_current
+    def _load_pos_information(self, df: pd.DataFrame) -> None:
+        """Wstawia tylko wiersze nowe lub ze zmienioną ceną. Ten sam (art_key, ean) i ta sama cena = pomijamy."""
+        update_sql = text('''
+            UPDATE pos_information
+            SET date_end = :date_end,
+                is_current = :is_current,
+                last_modified_date = :last_modified_date,
+                source_file = :source_file
+            WHERE art_key = :art_key AND ean = :ean AND date_end IS NULL
         ''')
 
-        source_file=self.path
-        
-        existing_art_keys=self._get_existing_art_keys
-        valid=df[df['art_key'].isin(existing_art_keys)].copy()
-        invalid=df[~df['art_key'].isin(existing_art_keys)].copy()
-        
+        insert_sql = text('''
+            INSERT INTO pos_information (art_key, ean, vat_rate, price_net, price_gross,
+                                        date_start, last_modified_date, source_file, is_current)
+            VALUES (:art_key, :ean, :vat_rate, :price_net, :price_gross, :date_start,
+                    :last_modified_date, :source_file, :is_current)
+                
+        ''')
 
-        valid_df=valid[['art_key', 'ean', 'vat_rate', 'price_net', 'price_gross']]
-        # new_df=valid_df.copy().to_dict(orient='records')
-        valid_df=valid_df.to_dict(orient='records')
+        source_file = self.path
+        existing_art_keys = self._get_existing_art_keys()
+        valid = df[df["art_key"].isin(existing_art_keys)].copy()
 
-        for record in valid_df:
-            record['date_start']=datetime.date(2023,1,1)
-            record['source_file']=source_file
-            record['last_modified_date']=datetime.datetime.now()
-            record['date_end']=None
-            record['is_current']=True
-    
-        update_rows=valid_df.copy()
-        for record in update_rows:
-            record['source_file']=source_file
-            record['date_end']=datetime.date.today()
-            record['is_current']=False
-            record['last_modified_date']=datetime.datetime.now()
+        if valid.empty:
+            return
 
-        update_rows=update_rows.to_dict(orient='records')    
+        # Pobierz bieżące ceny z bazy – wstawiamy tylko gdy (art_key, ean) nowe lub cena się zmieniła
+        current = self._get_current_pos_information(set(valid["art_key"]))
+        current = current.rename(columns={
+            "price_net": "price_net_db",
+            "price_gross": "price_gross_db",
+            "vat_rate": "vat_rate_db",
+        })
+        merged = valid.merge(current, on=["art_key", "ean"], how="left")
+
+        # Ten sam (art_key, ean) i ta sama cena = pomijamy (nie wstawiamy ponownie)
+        price_unchanged = (
+            merged["price_net_db"].notna()
+            & (merged["price_net"] == merged["price_net_db"])
+            & (merged["price_gross"] == merged["price_gross_db"])
+            & (merged["vat_rate"] == merged["vat_rate_db"])
+        )
+        to_insert = (
+            merged[~price_unchanged]
+            .drop(columns=["price_net_db", "price_gross_db", "vat_rate_db"], errors="ignore")
+            .drop_duplicates(subset=["art_key", "ean"])
+        )
+
+        if to_insert.empty:
+            logger.info("pos_information: no new or changed rows to load.")
+            return
+
+        to_insert = to_insert.copy()
+        to_insert["date_start"] = datetime.date(2023, 1, 1)
+        to_insert["source_file"] = source_file
+        to_insert["last_modified_date"] = datetime.datetime.now()
+        to_insert["date_end"] = None
+        to_insert["is_current"] = True
+        valid_df = to_insert.to_dict(orient="records")
+
+        update_df = to_insert[["art_key", "ean"]].drop_duplicates()
+        update_df["source_file"] = source_file
+        update_df["date_end"] = datetime.date.today()
+        update_df["is_current"] = False
+        update_df["last_modified_date"] = datetime.datetime.now()
+        update_rows = update_df.to_dict(orient="records")
 
         with self.engine.begin() as conn:
             try:
-                logging.info(f"Updating records in pos_information...")
-                conn.execute(update_sql, update_rows)
-                logging.info(f"Updated pos_information records successfully.")
-
-                logging.info(f"Inserting records into pos_information...")
+                if update_rows:
+                    logging.info("Closing current pos_information records before insert...")
+                    conn.execute(update_sql, update_rows)
+                logging.info("Inserting new pos_information records...")
                 conn.execute(insert_sql, valid_df)
-                logging.info(f"Inserted pos_information records successfully.")
-
+                logging.info("pos_information load completed successfully.")
             except Exception as e:
-                logger.error(f"Error inserting records into pos_information: {e}")
+                logger.error(f"Error in pos_information load: {e}")
+                raise
 
 
     def _load_product(self, df: pd.DataFrame) -> None:
@@ -479,17 +508,14 @@ class process_data:
                 
 
                 
-                
-                
-# path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos2.csv'
-# process_data=process_data(path)
-# df_pos_information, errors=process_data.validate_shape(PosInformation)
-# process_data.load_to_db(df_pos_information, 'pos_information')
-path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/prod_test.csv'
+# sector -> ok
+# department -> ok
+#                 
+path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos_information.csv'
 process_data=process_data(path)
-df_product, errors=process_data.validate_shape(Product)
-# print(errors)
-process_data.load_to_db(df_product, 'product')
+df_pos_information, errors=process_data.validate_shape(PosInformation)
+# print(errors) 
+process_data.load_to_db(df_pos_information, 'pos_information')  
 
 
 
