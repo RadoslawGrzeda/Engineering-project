@@ -7,7 +7,11 @@ import pandas as pd
 import pytest
 from unittest.mock import MagicMock, patch, call
 
+# load_file_develop (so that shema, main are importable)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# repo root (so that apps.logger_config is importable when main is loaded)
+_repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, _repo_root)
 
 # ── Pre-import setup ──────────────────────────────────────────────────────────
 # main.py runs module-level code on import (creates process_data instance,
@@ -49,8 +53,8 @@ with patch("sqlalchemy.create_engine", return_value=_mock_engine_global), \
      patch("builtins.open", side_effect=_fake_open):
      import main  # noqa: E402
 
-# The class is shadowed by the module-level instance; recover it.
-ProcessData = type(main.process_data)
+# The class (used to build instances in tests)
+ProcessData = main.process_data
 
 from shema import Sector, Department, Segment, Chief, PosInformation, Product, Contractor  # noqa: E402
 
@@ -84,10 +88,8 @@ def mock_engine():
 def proc(tmp_path, mock_engine):
     """ProcessData instance with mocked engine. path points to tmp_path/data.csv."""
     engine, _ = mock_engine
-    instance = ProcessData.__new__(ProcessData)
-    instance.path = str(tmp_path / "data.csv")
-    instance.connection_string = "fake"
-    instance.engine = engine
+    with patch("main.sa.create_engine", return_value=engine):
+        instance = ProcessData(str(tmp_path / "data.csv"))
     return instance
 
 
