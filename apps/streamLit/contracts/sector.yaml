@@ -1,0 +1,24 @@
+table: sector
+description: "Sektory sprzedaży – jednostki organizacyjne wyższego poziomu."
+
+sla:
+  freshness: when_file_arrives
+  owner: data-team
+  max_delay_hours: 24
+
+change_policy:
+  review_required: true
+  notify:
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: sector_id
+    type: string
+    nullable: false
+  - name: sector
+    type: string
+    nullable: false
+  - name: sector_code
+    type: string
+    nullable: false

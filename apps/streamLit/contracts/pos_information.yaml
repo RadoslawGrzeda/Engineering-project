@@ -1,0 +1,31 @@
+table: pos_information
+description: "Informacje cenowe i podatkowe dla artykułów na poziomie punktu sprzedaży."
+
+sla:
+  freshness: when_file_arrives
+  owner: pricing-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: true
+  notify:
+    - pricing-team
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: art_key
+    type: integer
+    nullable: false
+  - name: ean
+    type: string
+    nullable: false
+  - name: vat_rate
+    type: float
+    nullable: false
+  - name: price_net
+    type: float
+    nullable: false
+  - name: price_gross
+    type: float
+    nullable: false

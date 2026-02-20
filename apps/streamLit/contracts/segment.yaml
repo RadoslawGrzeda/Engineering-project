@@ -1,0 +1,31 @@
+table: segment
+description: "Segmenty sprzedaży przypisane do sektorów i kierowników."
+
+sla:
+  freshness: when_file_arrives
+  owner: data-team
+  max_delay_hours: 24
+
+change_policy:
+  review_required: true
+  notify:
+    - data-team
+    - analytics
+  breaking_changes: require_approval
+
+columns:
+  - name: segment_id
+    type: string
+    nullable: false
+  - name: segment
+    type: string
+    nullable: false
+  - name: segment_code
+    type: string
+    nullable: false
+  - name: chief_id
+    type: string
+    nullable: false
+  - name: sector_id
+    type: string
+    nullable: false

@@ -1,0 +1,34 @@
+table: contractor
+description: "Dane dostawców i kontrahentów."
+
+sla:
+  freshness: when_file_arrives
+  owner: procurement-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: true
+  notify:
+    - procurement-team
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: contractor_id
+    type: integer
+    nullable: false
+  - name: contractor_name
+    type: string
+    nullable: false
+  - name: contractor_phone_number
+    type: string
+    nullable: false
+  - name: contractor_email_address
+    type: string
+    nullable: false
+  - name: contractor_address
+    type: string
+    nullable: false
+  - name: contract_number
+    type: string
+    nullable: false
