@@ -1,0 +1,21 @@
+table: department
+description: "Działy towarowe przypisane do sektorów."
+
+sla:
+  freshness: when_file_arrives
+  owner: data-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: false
+  notify:
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: department_id
+    type: string
+    nullable: false
+  - name: department
+    type: string
+    nullable: false

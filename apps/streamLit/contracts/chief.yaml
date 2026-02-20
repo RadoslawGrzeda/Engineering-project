@@ -1,0 +1,43 @@
+table: chief
+description: "Dane kierowników segmentów sprzedaży wraz z historią zatrudnienia."
+
+sla:
+  freshness: when_file_arrives
+  owner: data-team
+  max_delay_hours: 24
+
+change_policy:
+  review_required: true
+  notify:
+    - data-team
+    - analytics
+  breaking_changes: require_approval
+
+columns:
+  - name: chief_id
+    type: string
+    nullable: false
+  - name: segment_id
+    type: string
+    nullable: false
+  - name: chief_first_name
+    type: string
+    nullable: false
+  - name: chief_last_name
+    type: string
+    nullable: false
+  - name: chief_email
+    type: string
+    nullable: false
+  - name: chief_phone
+    type: string
+    nullable: false
+  - name: is_current
+    type: boolean
+    nullable: false
+  - name: date_start
+    type: date
+    nullable: false
+  - name: date_end
+    type: date
+    nullable: true

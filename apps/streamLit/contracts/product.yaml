@@ -1,0 +1,44 @@
+table: product
+description: "Katalog produktów z przypisaniem do segmentów, działów i dostawców."
+
+sla:
+  freshness: when_file_arrives
+  owner: product-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: true
+  notify:
+    - product-team
+    - data-team
+    - analytics
+  breaking_changes: require_approval
+
+columns:
+  - name: art_key
+    type: integer
+    nullable: false
+  - name: art_number
+    type: string
+    nullable: false
+  - name: art_name
+    type: string
+    nullable: false
+  - name: segment_id
+    type: integer
+    nullable: false
+  - name: departament_id
+    type: integer
+    nullable: false
+  - name: contractor_id
+    type: integer
+    nullable: false
+  - name: brand
+    type: string
+    nullable: false
+  - name: pos_information_id
+    type: integer
+    nullable: false
+  - name: article_codification_date
+    type: date
+    nullable: false
