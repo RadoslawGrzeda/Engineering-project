@@ -1,28 +1,19 @@
-from hmac import new
-import pandas as pd 
+import pandas as pd
 import csv
-import logging
-from typing import List, Tuple
-from pydantic import ValidationError    
-from typing import Type, TypeVar,Generic
-from pydantic import BaseModel
+from typing import List, Tuple, Type, TypeVar
+from pydantic import ValidationError, BaseModel
 import sqlalchemy as sa
 from sqlalchemy import text
-import psycopg2
 from dotenv import load_dotenv
 import datetime
 import os
 from shema import Segment, Sector, Department, Chief, PosInformation, Product, Contractor
 load_dotenv()
+from apps.logger_config import get_logger
 
+T = TypeVar('T', bound=BaseModel)
 
-T=TypeVar('T', bound=BaseModel)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    )
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class process_data:
     def __init__ (self, path: str):
@@ -31,28 +22,48 @@ class process_data:
         self.engine = sa.create_engine(self.connection_string)
     
 
-    def validate_shape(self, shape:Type[T]):
-        records:   List[T] = []
-        errors: List[Tuple[int,str]] = []
+    def validate_shape(self, shape: Type[T]):
+        records: List[T] = []
+        errors: List[Tuple[int, str]] = []
+        line_no = 1
 
         with open(self.path, 'r', encoding='UTF-8', newline='') as f:
             try:
                 reader = csv.DictReader(f)
-                logger.info(f"Validating records from {self.path} starting...")
-                
+                logger.info("Validating records starting", extra={"file_path": self.path})
+
                 for line_no, row in enumerate(reader, start=2):
                     try:
                         records.append(shape.model_validate(row))
                     except ValidationError as e:
                         errors.append((line_no, row, e.json()))
                     except Exception as e:
-                        logger.error(f"Unexpected error at line {line_no} with row {row}: {e}")
+                        logger.error("Unexpected row error", extra={
+                            "file_path": self.path,
+                            "line_no": line_no,
+                            "row_data": row,
+                            "error_type": type(e).__name__,
+                            "error": str(e),
+                        }, exc_info=True)
             except Exception as e:
-                logger.error(f"Failed to read file {self.path}: {e}")
-        logging.info(f"Validation completed. Total records: {len(records)}")
+                logger.error("Failed to read file", extra={
+                    "file_path": self.path,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                })
+
+        logger.info("Validation completed", extra={
+            "file_path": self.path,
+            "total_rows_read": line_no - 1,
+            "valid_records": len(records),
+            "invalid_records": len(errors),
+        })
 
         if errors:
-            logger.error(f"Validation errors found: {len(errors)}, {[i for  i in errors]}")
+            logger.warning("Validation errors found", extra={
+                "file_path": self.path,
+                "invalid_records": len(errors),
+            })
 
         '''
         duplicates = set()
@@ -83,7 +94,7 @@ class process_data:
             'product': self._load_product,
         }        
         if table_name not in handler_map:
-            logger.error(f"Load to DB not implemented for table: {table_name}")
+            logger.error("Load to DB not implemented for table", extra={"table": table_name})
             return
         handler_map[table_name](df)
 
@@ -101,12 +112,24 @@ class process_data:
         records=df.to_dict(orient='records')
 
         with self.engine.begin() as conn:
-            try: 
-                logging.info(f"Inserting records into sector...")
+            try:
+                logger.info("Inserting records", extra={
+                    "table": "sector",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
                 conn.execute(sql, records)
-                logging.info(f"Inserted sector records successfully.")
+                logger.info("Records inserted successfully", extra={
+                    "table": "sector",
+                    "records_count": len(records),
+                })
             except Exception as e:
-                logger.error(f"Error inserting records into sector: {e}")
+                logger.error("DB insert failed", extra={
+                    "table": "sector",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
 
 
     def _get_existing_sectors(self) -> set[int]:
@@ -135,16 +158,33 @@ class process_data:
 
         records=valid.to_dict(orient='records')
 
-        if not valid.empty: 
-            logger.warning(f"Invalid sector_id found: {invalid['sector_id'].unique()}")
+        if not invalid.empty:
+            logger.warning("Rows skipped due to missing sector_id", extra={
+                "table": "department",
+                "skipped_count": len(invalid),
+                "invalid_sector_ids": invalid['sector_id'].unique().tolist(),
+                "source_file": source_file,
+            })
 
         with self.engine.begin() as conn:
-                try: 
-                    logging.info(f"Inserting records into department...")
-                    conn.execute(sql, records)
-                    logging.info(f"Inserted department records successfully.")
-                except Exception as e:
-                    logger.error(f"Error inserting records into department: {e}")
+            try:
+                logger.info("Inserting records", extra={
+                    "table": "department",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
+                conn.execute(sql, records)
+                logger.info("Records inserted successfully", extra={
+                    "table": "department",
+                    "records_count": len(records),
+                })
+            except Exception as e:
+                logger.error("DB insert failed", extra={
+                    "table": "department",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
 
 
     def _load_segment(self, df:pd.DataFrame) -> None:
@@ -199,24 +239,46 @@ class process_data:
         for record in records:
             record['source_file']=source_file
 
-        if not valid.empty: 
-            logger.warning(f"Invalid sector_id found: {invalid['sector_id'].unique()}")
-            
+        if not invalid.empty:
+            logger.warning("Rows skipped due to missing sector_id", extra={
+                "table": "segment",
+                "skipped_count": len(invalid),
+                "invalid_sector_ids": invalid['sector_id'].unique().tolist(),
+                "source_file": source_file,
+            })
+
         with self.engine.begin() as conn:
-            try: 
-                logging.info(f"Updating records in segment_chief...")
+            try:
+                logger.info("Updating segment_chief relations", extra={
+                    "table": "segment_chief",
+                    "records_count": len(updateRecords),
+                })
                 conn.execute(update_sql, updateRecords)
-                logging.info(f"Updated segment_chief records successfully.")
 
-                logging.info(f"Inserting records into segment...")
+                logger.info("Inserting records", extra={
+                    "table": "segment",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
                 conn.execute(sql, records)
-                logging.info(f"Inserted segment records successfully.")
 
-                logging.info(f"Inserting records into segment_chief...")
+                logger.info("Inserting segment_chief relations", extra={
+                    "table": "segment_chief",
+                    "records_count": len(updateRecords),
+                })
                 conn.execute(insert_relation_sql, updateRecords)
-                logging.info(f"Inserted segment_chief records successfully.")
+
+                logger.info("Records inserted successfully", extra={
+                    "table": "segment",
+                    "records_count": len(records),
+                })
             except Exception as e:
-                logger.error(f"Error inserting records into segment: {e}")
+                logger.error("DB insert failed", extra={
+                    "table": "segment",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
 
 
     def _load_chief(self, df: pd.DataFrame) -> None:
@@ -238,14 +300,25 @@ class process_data:
         df_chief['source_file']=source_file
 
         with self.engine.begin() as conn:
-            try: 
-                logging.info(f"Inserting records into chief...")
-                record=df_chief.to_dict(orient='records')
+            try:
+                record = df_chief.to_dict(orient='records')
+                logger.info("Inserting records", extra={
+                    "table": "chief",
+                    "records_count": len(record),
+                    "source_file": source_file,
+                })
                 conn.execute(sql, record)
-                logging.info(f"Inserted chief records successfully.")
-
+                logger.info("Records inserted successfully", extra={
+                    "table": "chief",
+                    "records_count": len(record),
+                })
             except Exception as e:
-                logger.error(f"Error inserting records into chief: {e}")
+                logger.error("DB insert failed", extra={
+                    "table": "chief",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
 
     
     def _load_contractor(self, df: pd.DataFrame) -> None:
@@ -307,19 +380,37 @@ class process_data:
         with self.engine.begin() as conn:
             try:
                 if 'contract_number' in df.columns:
-                    logging.info(f"Updating records into contract...")
+                    logger.info("Updating contract relations", extra={
+                        "table": "contract",
+                        "records_count": len(update_contract_df),
+                        "source_file": source_file,
+                    })
                     conn.execute(update_contract_sql, update_contract_df)
-                    logging.info(f"Updated contract records successfully.")
 
-                    logging.info(f"Inserting records into contract...")
+                    logger.info("Inserting contract records", extra={
+                        "table": "contract",
+                        "records_count": len(insert_df),
+                        "source_file": source_file,
+                    })
                     conn.execute(insert_contract_sql, insert_df)
-                    logging.info(f"Inserted contract records successfully.")
 
-                logging.info(f"Inserting records into contractor...")
+                logger.info("Inserting records", extra={
+                    "table": "contractor",
+                    "records_count": len(contractor_df),
+                    "source_file": source_file,
+                })
                 conn.execute(sql, contractor_df)
-                logging.info(f"Inserted contractor records successfully.")
+                logger.info("Records inserted successfully", extra={
+                    "table": "contractor",
+                    "records_count": len(contractor_df),
+                })
             except Exception as e:
-                logger.error(f"Error inserting records into contractor: {e}")
+                logger.error("DB insert failed", extra={
+                    "table": "contractor",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
 
 
     def _get_existing_art_keys(self) -> set[int]:
@@ -428,15 +519,31 @@ class process_data:
         with self.engine.begin() as conn:
             try:
                 if update_rows:
-                    logging.info("Closing current pos_information records before insert...")
+                    logger.info("Closing outdated pos_information records", extra={
+                        "table": "pos_information",
+                        "records_count": len(update_rows),
+                        "source_file": source_file,
+                    })
                     conn.execute(update_sql, update_rows)
-                logging.info("Inserting new pos_information records...")
-                conn.execute(insert_sql, valid_df)
-                logging.info("pos_information load completed successfully.")
-            except Exception as e:
-                logger.error(f"Error in pos_information load: {e}")
-                raise
 
+                logger.info("Inserting new pos_information records", extra={
+                    "table": "pos_information",
+                    "records_count": len(valid_df),
+                    "source_file": source_file,
+                })
+                conn.execute(insert_sql, valid_df)
+                logger.info("Records inserted successfully", extra={
+                    "table": "pos_information",
+                    "records_count": len(valid_df),
+                })
+            except Exception as e:
+                logger.error("DB insert failed", extra={
+                    "table": "pos_information",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
 
     def _load_product(self, df: pd.DataFrame) -> None:
         """
@@ -445,19 +552,18 @@ class process_data:
         last_modified_at, source_file. Validates FK to contractor, segment, department.
         """
         if df.empty:
-            logger.warning("No product records to load (DataFrame empty).")
+            logger.warning("No product records to load", extra={
+                "table": "product",
+                "reason": "DataFrame is empty",
+            })
             return
 
         sql = text("""
-            INSERT INTO product (
-                art_key, art_number, contractor_id, segment_id, department_id,
-                brand, article_codification_date, last_modified_at, source_file
-            )
-            VALUES (
-                :art_key, :art_number, :contractor_id, :segment_id, :department_id,
-                :brand, :article_codification_date, :last_modified_at, :source_file
-            )
-        """)
+                   INSERT INTO product (art_key, art_number, contractor_id, segment_id, department_id,
+                                        brand, article_codification_date, last_modified_at, source_file)
+                   VALUES (:art_key, :art_number, :contractor_id, :segment_id, :department_id,
+                           :brand, :article_codification_date, :last_modified_at, :source_file)
+                   """)
 
         existing_contractors = self._get_existing_contractor_ids()
         existing_segments = self._get_existing_segment_ids()
@@ -467,18 +573,24 @@ class process_data:
             df["contractor_id"].isin(existing_contractors)
             & df["segment_id"].isin(existing_segments)
             & df["departament_id"].isin(existing_departments)
-        ].copy()
+            ].copy()
         invalid = df[
             ~df["contractor_id"].isin(existing_contractors)
             | ~df["segment_id"].isin(existing_segments)
             | ~df["departament_id"].isin(existing_departments)
-        ].copy()
+            ].copy()
 
         if not invalid.empty:
-            logger.warning(f"Product: skipping {len(invalid)} rows with invalid FK (contractor/segment/department).")
-
+            logger.warning("Rows skipped due to invalid FK", extra={
+                "table": "product",
+                "skipped_count": len(invalid),
+                "source_file": self.path
+            })
         if valid.empty:
-            logger.warning("No valid product records to insert.")
+            logger.warning("No valid product records to insert", extra={
+                "table": "product",
+                "source_file": self.path,
+            })
             return
 
         valid = valid[
@@ -495,27 +607,38 @@ class process_data:
         valid["department_id"] = valid["departament_id"]
         valid["source_file"] = self.path
         valid["last_modified_at"] = datetime.datetime.now()
-        records = valid[["art_key", "art_number", "contractor_id", "segment_id", "department_id", "brand", "article_codification_date", "last_modified_at", "source_file"]].to_dict(orient="records")
+        records = valid[["art_key", "art_number", "contractor_id", "segment_id", "department_id", "brand",
+                         "article_codification_date", "last_modified_at", "source_file"]].to_dict(orient="records")
 
         with self.engine.begin() as conn:
             try:
-                logger.info("Inserting records into product...")
+                logger.info("Inserting records", extra={
+                    "table": "product",
+                    "records_count": len(records),
+                    "source_file": self.path,
+                })
                 conn.execute(sql, records)
-                logger.info("Product insert completed successfully.")
+                logger.info("Records inserted successfully", extra={
+                    "table": "product",
+                    "records_count": len(records),
+                })
             except Exception as e:
-                logger.error(f"Error inserting into product: {e}")
+                logger.error("DB insert failed", extra={
+                    "table": "product",
+                    "source_file": self.path,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
                 raise
-                
 
-                
 # sector -> ok
 # department -> ok
-#                 
-path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos_information.csv'
-process_data=process_data(path)
-df_pos_information, errors=process_data.validate_shape(PosInformation)
-# print(errors) 
-process_data.load_to_db(df_pos_information, 'pos_information')  
+# #
+# path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos_information.csv'
+# process_data=process_data(path)
+# df_pos_information, errors=process_data.validate_shape(PosInformation)
+# # print(errors)
+# process_data.load_to_db(df_pos_information, 'pos_information')
 
 
 
