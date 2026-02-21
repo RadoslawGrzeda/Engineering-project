@@ -15,17 +15,17 @@ change_policy:
 
 columns:
   - name: segment_id
-    type: string
-    nullable: false
-  - name: segment
-    type: string
+    type: integer
     nullable: false
   - name: segment_code
+    type: string
+    nullable: false
+  - name: segment_name
     type: string
     nullable: false
   - name: chief_id
     type: string
     nullable: false
   - name: sector_id
-    type: string
+    type: integer
     nullable: false

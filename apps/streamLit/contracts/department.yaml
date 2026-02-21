@@ -14,8 +14,11 @@ change_policy:
 
 columns:
   - name: department_id
+    type: integer
+    nullable: false
+  - name: department_name
     type: string
     nullable: false
-  - name: department
-    type: string
+  - name: sector_id
+    type: integer
     nullable: false
