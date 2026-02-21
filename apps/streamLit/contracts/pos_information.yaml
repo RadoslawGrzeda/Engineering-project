@@ -29,3 +29,15 @@ columns:
   - name: price_gross
     type: float
     nullable: false
+  - name: date_end
+    type: date
+    nullable: true
+  - name: date_start
+    type: date
+    nullable: false
+  - name: is_current
+    type: boolean
+    nullable: false
+  - name: pos_information_id
+    type: integer
+    nullable: false

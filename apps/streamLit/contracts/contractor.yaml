@@ -31,4 +31,7 @@ columns:
     nullable: false
   - name: contract_number
     type: string
-    nullable: false
+    nullable: true
+#  - name: contract_number
+#    type: string
+#    nullable: false

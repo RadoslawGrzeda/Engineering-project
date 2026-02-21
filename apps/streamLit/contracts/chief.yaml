@@ -15,10 +15,7 @@ change_policy:
 
 columns:
   - name: chief_id
-    type: string
-    nullable: false
-  - name: segment_id
-    type: string
+    type: integer
     nullable: false
   - name: chief_first_name
     type: string
@@ -32,12 +29,3 @@ columns:
   - name: chief_phone
     type: string
     nullable: false
-  - name: is_current
-    type: boolean
-    nullable: false
-  - name: date_start
-    type: date
-    nullable: false
-  - name: date_end
-    type: date
-    nullable: true

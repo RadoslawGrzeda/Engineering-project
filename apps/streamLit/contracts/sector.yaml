@@ -14,9 +14,9 @@ change_policy:
 
 columns:
   - name: sector_id
-    type: string
+    type: integer
     nullable: false
-  - name: sector
+  - name: sector_name
     type: string
     nullable: false
   - name: sector_code
