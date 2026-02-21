@@ -140,7 +140,7 @@ class Contractor(BaseModel):
     contractor_phone_number : PhoneNumber = Field(...)
     contractor_email_address : str = Field(...,min_length=5,max_length=100)
     contractor_address : str = Field(...,min_length=1,max_length=100)
-    contract_number : str = Field()
+    # contract_number : str = Field()
 
     @field_validator('contractor_email_address')
     @classmethod
