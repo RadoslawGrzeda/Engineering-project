@@ -2,6 +2,7 @@ from typing import Any
 import time
 import io
 import os
+import sys
 from datetime import datetime
 
 import streamlit as st
@@ -10,8 +11,12 @@ from dotenv import load_dotenv
 from yaml import safe_load
 import pandas as pd
 from minio_client import MinioClient
-import structlog
 from streamlit_authenticator import Authenticate
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
+from apps.logger_config import get_logger
+
+
+
 
 
 st.set_page_config(
@@ -21,13 +26,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso", utc=True),
-        structlog.dev.ConsoleRenderer(),
-    ],
-)
-log = structlog.get_logger()
+logger = get_logger(__name__)
+
+
+def _current_user() -> str:
+    return st.session_state.get("name", "unknown")
+
 
 CONTRACTS_DIR = os.path.join(os.path.dirname(__file__), "contracts")
 
@@ -49,12 +53,33 @@ FRESHNESS_LABELS: dict[str, str] = {
 }
 
 
-def     load_contract(file_type: str) -> dict[str, Any] | None:
+def load_contract(file_type: str) -> dict[str, Any] | None:
     path = os.path.join(CONTRACTS_DIR, f"{file_type}.yaml")
     if not os.path.exists(path):
+        logger.warning("Contract not found", extra={
+            "user": _current_user(),
+            "file_type": file_type,
+            "path": path,
+        })
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        return safe_load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            contract = safe_load(f)
+        logger.info("Contract loaded", extra={
+            "user": _current_user(),
+            "file_type": file_type,
+            "path": path,
+        })
+        return contract
+    except Exception as e:
+        logger.error("Failed to load contract", extra={
+            "user": _current_user(),
+            "file_type": file_type,
+            "path": path,
+            "error_type": type(e).__name__,
+            "error": str(e),
+        }, exc_info=True)
+        return None
 
 
 def _validate_col_type(series: pd.Series, expected_type: str) -> bool:
@@ -113,6 +138,20 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
 
     if result["nullable_errors"] or result["type_errors"]:
         result["valid"] = False
+
+    if result["valid"]:
+        logger.info("Contract validation passed", extra={
+            "user": _current_user(),
+            "valid_records": len(df),
+        })
+    else:
+        logger.warning("Contract validation failed", extra={
+            "user": _current_user(),
+            "missing_cols": result["missing"],
+            "extra_cols": result["extra"],
+            "nullable_errors": result["nullable_errors"],
+            "type_errors": result["type_errors"],
+        })
 
     return result
 
@@ -208,6 +247,12 @@ class StreamlitApp:
             df = pd.read_csv(uploaded_file)
             uploaded_file.seek(0)
         except Exception as e:
+            logger.error("Failed to read CSV file", extra={
+                "user": _current_user(),
+                "file_name": uploaded_file.name,
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
             st.error(f"Nie udało się wczytać pliku CSV: {e}")
             return
 
@@ -248,7 +293,10 @@ class StreamlitApp:
                 try:
                     if not self.client.bucket_exists(bucket):
                         self.client.make_bucket(st.session_state["name"], bucket)
-                        log.info("Bucket created", bucket=bucket)
+                        logger.info("Bucket created", extra={
+                            "user": _current_user(),
+                            "bucket": bucket,
+                        })
 
                     result_msg = self.client.upload_file(
                         st.session_state["name"],
@@ -258,13 +306,23 @@ class StreamlitApp:
                         len(up_data),
                         content_type="application/csv",
                     )
-                    log.info("File uploaded", filename=filename, bucket=bucket)
+                    logger.info("File uploaded", extra={
+                        "user": _current_user(),
+                        "uploaded_file": filename,
+                        "bucket": bucket,
+                    })
                     st.success(result_msg)
                     time.sleep(2)
                     st.session_state.uploaded_file_key += 1
                     st.rerun()
                 except Exception as e:
-                    log.error("Upload failed", error=str(e))
+                    logger.error("Upload failed", extra={
+                        "user": _current_user(),
+                        "uploaded_file": filename,
+                        "bucket": bucket,
+                        "error_type": type(e).__name__,
+                        "error": str(e),
+                    }, exc_info=True)
                     st.error(f"Błąd podczas wysyłania: {e}")
 
     def run(self, authenticator: Authenticate):
