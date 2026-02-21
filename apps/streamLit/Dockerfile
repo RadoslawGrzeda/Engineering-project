@@ -2,10 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY streamlit/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY streamlit/ .
+COPY __init__.py apps/__init__.py
+COPY logger_config.py apps/logger_config.py
 
 EXPOSE 8501
 

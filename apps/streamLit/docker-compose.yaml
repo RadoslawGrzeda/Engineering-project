@@ -1,12 +1,14 @@
 services:
   streamlit:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: streamlit/Dockerfile
     container_name: streamlit
     restart: always
     networks:
       - traefik_network
+    ports:
+      - "8501:8501"
     environment:
       MINIO_ADDRESS: minio:9000
       MINIO_USER: ${MINIO_USER}
