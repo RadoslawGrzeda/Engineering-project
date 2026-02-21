@@ -26,7 +26,7 @@ class MinioClient:
             return f'Successfully uploaded file {file_name} to bucket {bucket_name}'
         except Exception as e:
             logger.error(f"Error uploading file {file_name} to bucket {bucket_name}: {e}")
-            return f'Error uploading file {file_name} to bucket {bucket_name}'
+            return f'Error uploading file {file_name} to bucket {bucket_name} : {e}'
     def make_bucket(self,client_name:str,bucket_name:str):
         try:
             self.client.make_bucket(bucket_name)
