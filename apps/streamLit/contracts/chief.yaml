@@ -15,7 +15,7 @@ change_policy:
 
 columns:
   - name: chief_id
-    type: integer
+    type: string
     nullable: false
   - name: chief_first_name
     type: string
