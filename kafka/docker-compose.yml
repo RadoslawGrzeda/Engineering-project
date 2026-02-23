@@ -21,19 +21,17 @@ services:
     networks:
       - traefik_network
 
-  kafka-ui:
-      image: provectuslabs/kafka-ui:latest
-      container_name: kafka-ui
-      ports:
-        - "8085:8080" #
-      environment:
-        KAFKA_CLUSTERS_0_NAME: Retail-Cluster
-        KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:9094 
-        DYNAMIC_CONFIG_ENABLED: 'true'
-      networks:
-        - traefik_network
-      depends_on:
-        - broker
+  redpanda-console:
+    image: redpandadata/console:latest
+    container_name: redpanda-console
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_BROKERS: "broker:9094"
+    networks:
+      - traefik_network
+    depends_on:
+      - broker
 
 networks:
   traefik_network:
