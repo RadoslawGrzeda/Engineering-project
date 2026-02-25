@@ -287,7 +287,11 @@ class StreamlitApp:
             send = st.button("Wyślij", type="primary", use_container_width=True)
 
         if send:
-            filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
+            # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
+            schema_name= file_type
+            name, ext = os.path.splitext(uploaded_file.name)
+            file = f"{name}_{datetime.now().strftime('%Y%m%d')}{ext}"
+            filename = f"{schema_name}/{file}"
             up_data = uploaded_file.getvalue()
             with st.spinner("Wysyłanie pliku do MinIO..."):
                 try:
