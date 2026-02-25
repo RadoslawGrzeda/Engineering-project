@@ -15,7 +15,7 @@ T = TypeVar('T', bound=BaseModel)
 
 logger = get_logger(__name__)
 
-class process_data:
+class ProcessData:
     def __init__ (self, path: str):
         self.path = path
         self.connection_string = os.getenv("postgress_connection")
