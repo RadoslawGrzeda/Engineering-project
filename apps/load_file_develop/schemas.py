@@ -1,6 +1,6 @@
 from multiprocessing import Value
 from pydantic import BaseModel, Field, EmailStr ,field_validator
-from pydantic_extra_types.phone_numbers import PhoneNumber
+# from pydantic_extra_types.phone_numbers import PhoneNumber
 from typing import List, Optional   
 import datetime
 import re
@@ -74,11 +74,23 @@ class Chief(BaseModel):
     chief_first_name: str = Field(...,min_length=1,max_length=50)
     chief_last_name: str = Field(...,min_length=1,max_length=50)
     chief_email: str = Field(...,min_length=5,max_length=100)
-    chief_phone: PhoneNumber = Field(...)
+    chief_phone: str = Field(...)
     # is_current: bool = Field(...)
     # date_start: datetime.date = Field(...)
     # date_end: Optional[datetime.date] = Field(None)
 
+    @field_validator('chief_phone')
+    @classmethod
+    def validate_chief_phone(cls, v):
+        try:
+            regex = r'^\+?[1-9]\d{1,14}$'
+            if not re.match(regex, v):
+                raise ValueError(f"Invalid phone number format: {v}")
+            return v
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Invalid phone number format: {v}. Error: {str(e)}")
 
     @field_validator('chief_id')
     @classmethod
@@ -137,10 +149,23 @@ class Product(BaseModel):
 class Contractor(BaseModel):
     contractor_id : int = Field()
     contractor_name : str = Field(...,min_length=1,max_length=100)
-    contractor_phone_number : PhoneNumber = Field(...)
+    contractor_phone_number : str = Field(...)
     contractor_email_address : str = Field(...,min_length=5,max_length=100)
     contractor_address : str = Field(...,min_length=1,max_length=100)
     # contract_number : str = Field()
+
+    @field_validator('contractor_phone_number')
+    @classmethod
+    def validate_contractor_phone_number(cls, v):
+        try:
+            regex = r'^\+?[1-9]\d{1,14}$'
+            if not re.match(regex, v):
+                raise ValueError(f"Invalid phone number format: {v}")
+            return v
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Invalid phone number format: {v}. Error: {str(e)}")
 
     @field_validator('contractor_email_address')
     @classmethod
