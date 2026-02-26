@@ -13,15 +13,14 @@ from datetime import datetime
 )
 def process_minio_file():
     @task
-    def load_file_from_bucket(**args):
+    def load_file_from_bucket(**context):
         from minio import Minio
-        import pandas as pd
         import os, tempfile
 
-        bucket_name = args['bucket_name']
-        file_name = args['file_name']
-        file_key = args['file_key']
-        file_schema=args['schema']
+        conf = context["dag_run"].conf
+        bucket_name = conf['bucket_name']
+        file_key = conf['file_key']
+        file_schema = conf['file_schema']
 
         minio_client=Minio (
             os.getenv('MINIO_ADDRESS'),
