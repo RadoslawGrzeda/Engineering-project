@@ -37,7 +37,7 @@ CONTRACTS_DIR = os.path.join(os.path.dirname(__file__), "contracts")
 
 BUCKET_OPTIONS: dict[str, list[str]] = {
     "sklep": ["test", "cos"],
-    "produkt": ["chief", "segment", "sector", "department", "pos_information", "contractor", "product"],
+    "produkt": ["Chief", "Segment", "Sector", "Department", "PosInformation", "Contractor", "Product"],
 }
 
 BUCKET_LABELS: dict[str, str] = {
@@ -290,8 +290,7 @@ class StreamlitApp:
             # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
             schema_name= file_type
             name, ext = os.path.splitext(uploaded_file.name)
-            file = f"{name}_{datetime.now().strftime('%Y%m%d')}{ext}"
-            filename = f"{schema_name}/{file}"
+            file = f"{name}_{datetime.now().strftime('%Y%m%d')}{ext}
             up_data = uploaded_file.getvalue()
             with st.spinner("Wysyłanie pliku do MinIO..."):
                 try:
