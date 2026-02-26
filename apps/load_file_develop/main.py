@@ -7,7 +7,7 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 import datetime
 import os
-from shema import Segment, Sector, Department, Chief, PosInformation, Product, Contractor
+from schemas import Segment, Sector, Department, Chief, PosInformation, Product, Contractor
 load_dotenv()
 from apps.logger_config import get_logger
 
