@@ -29,7 +29,7 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ../apps:/opt/airflow/apps
-      - airflow_logs:/opt/airflow/logs
+      - ./logs:/opt/airflow/logs
     ports:
       - "8080:8080"
     depends_on:
@@ -61,7 +61,7 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ../apps:/opt/airflow/apps
-      - airflow_logs:/opt/airflow/logs
+      - ./logs:/opt/airflow/logs
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -89,7 +89,6 @@ services:
 
 volumes:
   airflow_db_data:
-  airflow_logs:
 
 networks:
   traefik_network:
