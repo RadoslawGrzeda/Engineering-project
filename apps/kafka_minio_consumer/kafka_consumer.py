@@ -14,7 +14,7 @@ import pandas as pd
 class KafkaMinioConsumer:
     def __init__(self):
         load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
-        self.logger = get_logger("Kafka_Minio_Consumer")
+        self.logger = get_logger(__name__)
         self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
         self.group_id = os.getenv('KAFKA_GROUP_ID')
         self.topic=os.getenv('KAFKA_TOPIC')
@@ -91,7 +91,7 @@ class KafkaMinioConsumer:
             data, errors = process_data.validate_shape(schema)
             if errors:
                 self.logger.error("Schema validation errors: %s", errors, extra={'schema': schema, 'file_key': file_key})
-                raise ValueError("Schema validation failed")
+                process_data.load_to_dead_letter(errors, schema)
             self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
                 process_data.load_to_db(data, schema)
@@ -103,6 +103,7 @@ class KafkaMinioConsumer:
             self.logger.error("Error processing data: %s", e, extra={'schema': schema, 'file_key': file_key})
             raise
 
+            
     def consume_messages(self):
         while True:
             message = self.consumer.poll(timeout_ms=1.0)
