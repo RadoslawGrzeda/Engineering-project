@@ -14,7 +14,7 @@ from minio_client import MinioClient
 from streamlit_authenticator import Authenticate
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
 from apps.logger_config import get_logger
-
+from sqlalchemy import create_engine, text
 
 
 
@@ -248,6 +248,8 @@ class StreamlitApp:
             uploaded_file.seek(0)
         except Exception as e:
             logger.error("Failed to read CSV file", extra={
+                "application": 'StreamLit',
+                "method": '_render_upload_section',
                 "user": _current_user(),
                 "file_name": uploaded_file.name,
                 "error_type": type(e).__name__,
@@ -290,7 +292,7 @@ class StreamlitApp:
             # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
             schema_name= file_type
             name, ext = os.path.splitext(uploaded_file.name)
-            file = f"{name}_{datetime.now().strftime('%Y%m%d')}{ext}
+            file = f"{name}_{datetime.now().strftime('%Y%m%d')}{ext}"
             up_data = uploaded_file.getvalue()
             with st.spinner("Wysyłanie pliku do MinIO..."):
                 try:
@@ -304,29 +306,124 @@ class StreamlitApp:
                     result_msg = self.client.upload_file(
                         st.session_state["name"],
                         bucket,
-                        filename,
+                        file,
                         io.BytesIO(up_data),
                         len(up_data),
                         content_type="application/csv",
                     )
                     logger.info("File uploaded", extra={
                         "user": _current_user(),
-                        "uploaded_file": filename,
+                        "uploaded_file": file,
                         "bucket": bucket,
                     })
                     st.success(result_msg)
+                    file_size_in_bytes = len(uploaded_file.getvalue())
+                    try:
+                        self._send_file_information_to_db(
+                            user_name=_current_user(),
+                            destination_table=file_type,
+                            file_name=file,
+                            number_of_rows=len(df),
+                            file_size=file_size_in_bytes,
+                            rejected_rows_count=0,
+                            inserted_rows_count=0,
+                            status='pending',
+                            error_message=''
+                        )
+                    except Exception as e:
+                        logger.error("Failed to send file information to database after upload", extra={
+                            "user": _current_user(),
+                            'application': 'StreamLit',
+                            'method': '_render_upload_section',
+                            "file_name": file,
+                            "error_type": type(e).__name__,
+                            "error": str(e),
+                        }, exc_info=True)
                     time.sleep(2)
                     st.session_state.uploaded_file_key += 1
                     st.rerun()
                 except Exception as e:
                     logger.error("Upload failed", extra={
                         "user": _current_user(),
-                        "uploaded_file": filename,
+                        "uploaded_file": file,
                         "bucket": bucket,
                         "error_type": type(e).__name__,
                         "error": str(e),
                     }, exc_info=True)
                     st.error(f"Błąd podczas wysyłania: {e}")
+
+    def _show_user_history(self):
+        
+        engine=sa.create_engine(os.getenv("DATABASE_URL"))
+        query = sa.text("""SELECT file_name, upload_time, status FROM upload_history WHERE user_name = :user_name ORDER BY
+            upload_time DESC""")
+        with engine.connect() as conn:
+            result = conn.execute(query, {"user_name": _current_user()})
+            history = result.fetchall()
+
+#    id                   SERIAL PRIMARY KEY,
+#     user_id              VARCHAR(100),
+#     destination_table    VARCHAR(100) NOT NULL,
+#     file_name            VARCHAR(255) NOT NULL,
+#     number_of_rows       INT,
+#     file_size            BIGINT,
+#     rejected_rows_count  INT DEFAULT 0,
+#     inserted_rows_count  INT DEFAULT 0,
+#     created_by           VARCHAR(100),
+#     status               VARCHAR(50) CHECK (status IN ('success','partial_success', 'error', 'pending')),
+#     error_message        TEXT,
+#     processed_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    def _send_file_information_to_db(self, user_name:str, destination_table:str,
+                            file_name:str, number_of_rows:int, file_size:int,
+                            rejected_rows_count:int, inserted_rows_count:int,
+                            status:str, error_message:str):
+        '''
+        This method is responsible for send information to db about existing file,
+        which was send from streamlit app from specified user. Information is send to table etl_load_log_product, which is used for monitoring and tracking file uploads.
+        '''
+        try:
+            engine=create_engine(os.getenv('DATABASE_URL'))
+        except Exception as e:
+                logger.error("Database connection failed with send file information from streamlit", extra={
+                    "user": _current_user(),
+                    'application': 'StreamLit',
+                    'method': '_send_file_information_to_db',
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
+
+        sql = text('''
+                INSERT INTO etl_load_log_product(
+                user_name, destination_table, file_name, number_of_rows, file_size,
+                rejected_rows_count, inserted_rows_count, status, error_message)
+                VALUES (:user_name, :destination_table, :file_name, :number_of_rows, :file_size,
+                :rejected_rows_count, :inserted_rows_count, :status, :error_message)
+        ''')
+
+        try:
+            with engine.connect() as conn:
+                conn.execute(sql, {
+                    "user_name": user_name,
+                    "destination_table": destination_table,
+                    "file_name": file_name,
+                    "number_of_rows": number_of_rows,
+                    "file_size": file_size,
+                    "rejected_rows_count": rejected_rows_count,
+                    "inserted_rows_count": inserted_rows_count,
+                    "status": status,
+                    "error_message": error_message
+                })
+                conn.commit()
+        except Exception as e:
+                logger.error("Failed to insert file information to database from streamlit", extra={
+                    "user": _current_user(),
+                    'application': 'StreamLit',
+                    'method': '_send_file_information_to_db',
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
 
     def run(self, authenticator: Authenticate):
         if st.session_state["authentication_status"]:
