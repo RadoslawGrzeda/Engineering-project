@@ -12,6 +12,16 @@ class Department(BaseModel):
     department_name : str = Field(...,min_length=1,max_length=100)
     sector_id : int   = Field(..., gt=0)
 
+    @field_validator('department_name')
+    @classmethod
+    def validate_department_name(cls, v):
+        try:
+            if re.match(r'^[0-9]+$', str(v)):
+                raise ValueError(f"Invalid department name format: {v}")
+            return v
+        except Exception as e:
+            raise ValueError(f"Invalid department name format: {v}. Error: {str(e)}")
+
 class Sector(BaseModel):
     sector_id : int = Field(..., gt=0,)
     sector_name : str = Field(...,min_length=1)
