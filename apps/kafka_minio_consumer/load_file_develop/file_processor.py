@@ -7,6 +7,7 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 import datetime
 import os
+import json
 from apps.kafka_minio_consumer.load_file_develop.schemas import Segment, Sector, Department, Chief, PosInformation, Product, Contractor
 load_dotenv()
 from apps.logger_config import get_logger
@@ -36,13 +37,14 @@ class ProcessData:
     def validate_shape(self, schema_name: str):
         shape=SCHEMA_MAP[schema_name]
         records: List[T] = []
-        errors: List[Tuple[int, str]] = []
+        errors: List[Tuple[int, dict, str]] = []
         line_no = 1
 
         try:
             for line_no, row in enumerate(self.df.to_dict(orient='records'), start=2):
                 try:
-                    records.append(shape.model_validate(row))
+                    record=shape.model_validate(row)
+                    records.append(record)
                 except ValidationError as e:
                     errors.append((line_no, row, e.json()))
                 except Exception as e:
@@ -158,6 +160,37 @@ class ProcessData:
             return
         handler_map[table_name](df)
 
+    def load_to_dead_letter(self, row_data:List[Tuple[int, dict, str]], source_table):
+        try:
+            sql = text('''
+                INSERT INTO dead_letter (source_table, source_file, raw_row, error_details, line_no)
+                VALUES (:source_table, :source_file, :raw_row, :error_details, :line_no)
+            ''')
+            records=[{
+                "source_table": source_table,
+                "source_file": self.path,
+                "raw_row": json.dumps(row_data,default=str),
+                "error_details": error_details,
+                "line_no": line_no,  
+            } for line_no, row_data, error_details in row_data]
+            with self.engine.begin() as conn:
+                try:            
+                    logger.info("Inserting records into dead letter", extra={
+                        "table": "dead_letter",
+                        "records_count": len(records),
+                        "source_file": self.path,
+                        "source_table": source_table,
+                    })
+                    conn.execute(sql, records)
+                except Exception as e:
+                    logger.info('Failed inserting into dead letter')
+        except Exception as e:
+            logger.error("Failed to load to dead letter", extra={
+                "source_table": source_table,
+                "row_data": row_data,
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
 
     def _load_sector(self, df: pd.DataFrame) -> None:
         source_file=self.path
