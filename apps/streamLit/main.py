@@ -353,13 +353,30 @@ class StreamlitApp:
                     st.error(f"Błąd podczas wysyłania: {e}")
 
     def _show_user_history(self):
+        engine=create_engine(os.getenv("DATABASE_URL"))
+        query =text("""SELECT file_name, processed_at, status FROM upload_history WHERE user_name = :user_name ORDER BY
+            processed_at DESC""")
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(query, {"user_name": _current_user()})
+                history = result.fetchall()
+        except Exception as e:
+            logger.error("Failed to fetch user upload history from database", extra={
+                "user": _current_user(),
+                'application': 'StreamLit',
+                'method': '_show_user_history',
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            st.error(f"Nie można pobrać historii przesłanych plików: {e}")
+            return []
+        if history:
+            st.subheader("Historia przesłanych plików")
+            df_history = pd.DataFrame(history, columns=["Nazwa pliku", "Data przetworzenia", "Status"])
+            st.dataframe(df_history, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nie przesłano jeszcze żadnych plików.")
         
-        engine=sa.create_engine(os.getenv("DATABASE_URL"))
-        query = sa.text("""SELECT file_name, upload_time, status FROM upload_history WHERE user_name = :user_name ORDER BY
-            upload_time DESC""")
-        with engine.connect() as conn:
-            result = conn.execute(query, {"user_name": _current_user()})
-            history = result.fetchall()
 
 #    id                   SERIAL PRIMARY KEY,
 #     user_id              VARCHAR(100),
