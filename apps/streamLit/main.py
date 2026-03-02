@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 import time
 import io
@@ -354,12 +355,13 @@ class StreamlitApp:
 
     def _show_user_history(self):
         engine=create_engine(os.getenv("DATABASE_URL"))
-        query =text("""SELECT file_name, processed_at, status FROM upload_history WHERE user_name = :user_name ORDER BY
+        query =text("""SELECT file_name, processed_at, status FROM etl_load_log_product WHERE user_name = :user_name ORDER BY
             processed_at DESC""")
         try:
             with engine.connect() as conn:
-                result = conn.execute(query, {"user_name": _current_user()})
-                history = result.fetchall()
+                    result = conn.execute(query, {"user_name": _current_user()})
+                    history = result.fetchall()
+                    conn.commit()
         except Exception as e:
             logger.error("Failed to fetch user upload history from database", extra={
                 "user": _current_user(),
@@ -370,12 +372,66 @@ class StreamlitApp:
             }, exc_info=True)
             st.error(f"Nie można pobrać historii przesłanych plików: {e}")
             return []
+
         if history:
-            st.subheader("Historia przesłanych plików")
-            df_history = pd.DataFrame(history, columns=["Nazwa pliku", "Data przetworzenia", "Status"])
-            st.dataframe(df_history, use_container_width=True, hide_index=True)
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("📂 Historia plików")
+
+            PAGE_SIZE = 5
+            total_pages = max(1, (len(history) + PAGE_SIZE - 1) // PAGE_SIZE)
+
+            if "history_page" not in st.session_state:
+                st.session_state["history_page"] = 0
+
+            page = st.session_state["history_page"]
+            page_items = history[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+
+            for file_name, processed_at, status in page_items:
+                if status == "success":
+                    badge_color, label = "#28a745", "Sukces"
+                elif status == "failed":
+                    badge_color, label = "#dc3545", "Błąd"
+                else:
+                    badge_color, label = "#ffc107", status or "Nieznany"
+                date_str = processed_at.strftime("%Y-%m-%d %H:%M") if processed_at else "—"
+                st.sidebar.markdown(
+                    f"""<div style="
+                        background:#1e1e2e;
+                        border-radius:8px;
+                        padding:8px 10px;
+                        margin-bottom:6px;
+                        border-left: 4px solid {badge_color};
+                    ">
+                        <div style="font-size:13px;font-weight:600;color:#e0e0e0;word-break:break-all">{file_name}</div>                                             
+                        <div style="font-size:11px;color:#aaa;margin-top:2px">{date_str}</div>
+                        <div style="margin-top:4px">
+                            <span style="
+                                background:{badge_color};
+                                color:#fff;
+                                font-size:10px;
+                                padding:2px 7px;
+                                border-radius:10px;
+                                font-weight:600;
+                            ">{label}</span>
+                        </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
+            col1, col2, col3 = st.sidebar.columns([1, 2, 1])
+            with col1:
+                if st.button("◀", disabled=page == 0, key="hist_prev"):
+                    st.session_state["history_page"] -= 1
+                    st.rerun()
+            with col2:
+                st.caption(f"{page + 1} / {total_pages}")
+            with col3:
+                if st.button("▶", disabled=page >= total_pages - 1, key="hist_next"):
+                    st.session_state["history_page"] += 1
+                    st.rerun()
         else:
-            st.info("Nie przesłano jeszcze żadnych plików.")
+            st.sidebar.markdown("---")
+            st.sidebar.caption("Nie przesłano jeszcze żadnych plików.")
         
 
 #    id                   SERIAL PRIMARY KEY,
@@ -445,7 +501,9 @@ class StreamlitApp:
     def run(self, authenticator: Authenticate):
         if st.session_state["authentication_status"]:
             self._render_sidebar(authenticator)
-
+            # self._show_user_history()
+            with st.sidebar:
+                self._show_user_history()
             st.title("Data Loader")
             st.markdown("Wybierz temat i typ pliku, a następnie wgraj plik CSV.")
             st.markdown("---")
