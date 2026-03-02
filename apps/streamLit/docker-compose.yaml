@@ -10,6 +10,8 @@ services:
     ports:
       - "8501:8501"
     environment:
+      PYTHONUNBUFFERED: "1"
+      DATABASE_URL: postgresql://ods:ods@ods-db:5432/ods
       MINIO_ADDRESS: minio:9000
       MINIO_USER: ${MINIO_USER}
       MINIO_PASSWORD: ${MINIO_PASSWORD}
