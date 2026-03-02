@@ -10,6 +10,7 @@ from apps.logger_config import get_logger
 from apps.kafka_minio_consumer.load_file_develop.file_processor import ProcessData
 import io 
 import pandas as pd
+from sqlalchemy import create_engine, text
 
 class KafkaMinioConsumer:
     def __init__(self):
@@ -18,6 +19,7 @@ class KafkaMinioConsumer:
         self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
         self.group_id = os.getenv('KAFKA_GROUP_ID')
         self.topic=os.getenv('KAFKA_TOPIC')
+        self.db_engine = create_engine(os.getenv('POSTGRES_CONNECTION'))
         # self.airflow_api_url = os.getenv('AIRFLOW_API_URL')
         # self.API_USER = os.getenv('API_USER')
         # self.API_PASSWORD = os.getenv('API_PASSWORD')
@@ -83,11 +85,38 @@ class KafkaMinioConsumer:
             response.close()
             response.release_conn()
     
+    def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None):
+            sql = text('''
+                UPDATE etl_load_log_product
+                SET status = :status,
+                    error_message = :error_message,
+                    inserted_rows_count = :inserted_rows_count,
+                    rejected_rows_count = :rejected_rows_count,
+                    processed_at = NOW()
+                WHERE file_name = :file_name
+                and destination_table = :destination_table
+            ''')
+            with self.db_engine.connect() as connection:
+                try:
+                    connection.execute(sql, {   
+                        'destination_table': destination_table,
+                        'file_name': file_name,
+                        'status': status,
+                        'error_message': error_message if error_message is not None else None,
+                        'inserted_rows_count': inserted_rows if inserted_rows is not None else 0,
+                        'rejected_rows_count': rejected_rows if rejected_rows is not None else 0
+                    })
+                    connection.commit()
+                except Exception as e:
+                    self.logger.error("Error updating file status in database: %s", e, extra={'file_name': file_name, 'destination_table': destination_table, 'status': status})
+                    raise
+    
     def _validate_and_load_to_db(self, df, schema, file_key):
         '''
         '''
         try:
             process_data=ProcessData(df,file_key)
+            self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='pending')
             data, errors = process_data.validate_shape(schema)
             if errors:
                 self.logger.error("Schema validation errors: %s", errors, extra={'schema': schema, 'file_key': file_key})
@@ -95,12 +124,18 @@ class KafkaMinioConsumer:
             self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
                 process_data.load_to_db(data, schema)
-                self.logger.info("Data loaded successfully to database", extra={'schema': schema, 'file_key': file_key})
+                if errors:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len(data),error_message=str(errors), rejected_rows=len(errors))
+                    self.logger.info(f"Data partially successfully load to database {file_key.split('/')[-1]}", extra={'schema': schema, 'file_key': file_key})
+                else:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len(data))
+                    self.logger.info("Data successfully load to database", extra={'schema': schema, 'file_key': file_key})
             except Exception as e:
+                self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e))
                 self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
                 raise
         except Exception as e:
-            self.logger.error("Error processing data: %s", e, extra={'schema': schema, 'file_key': file_key})
+            self.logger.error("Error processing data: %s", e, extra={'schema': schema, 'file_key': file_key}, exc_info=True)
             raise
 
             
@@ -115,7 +150,7 @@ class KafkaMinioConsumer:
                             bucket_name = event['Records'][0]['s3']['bucket']['name']
                             raw_name = event['Records'][0]['s3']['object']['key']
                             file_key = unquote(raw_name)
-                            file_name=file_key.split('/')[1]
+                            file_name=file_key.split('/')[-1]
                             schema=file_key.split("/")[0]
                             self.logger.info("Received event for file '%s' in bucket '%s'", file_name, bucket_name, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
                             df=self._load_file_from_minio(bucket_name, file_key)
@@ -123,7 +158,7 @@ class KafkaMinioConsumer:
                             self.consumer.commit()
                             # self._send_post_request(bucket_name,schema, file_key)
                 except Exception as e:
-                    self.logger.error("Error processing message: %s", e, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
+                    self.logger.error("Error processing message: %s", e, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema}, exc_info=True)
                     continue
 
 if __name__ == "__main__":

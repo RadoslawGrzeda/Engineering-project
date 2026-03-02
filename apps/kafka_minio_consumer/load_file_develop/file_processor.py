@@ -21,7 +21,7 @@ SCHEMA_MAP = {
     'sector': Sector,
     'department': Department,
     'segment': Segment,
-    'pos_information': PosInformation,
+    'posinformation': PosInformation,
     'product': Product,
     'contractor': Contractor,
 }
@@ -156,7 +156,7 @@ class ProcessData:
             'product': self._load_product,
         }        
         if table_name not in handler_map:
-            logger.error("Load to DB not implemented for table", extra={"table": table_name})
+            logger.error("Load to DB not implemented for table", extra={"table": table_name,"method": "load_to_db",'class': self.__class__.__name__})
             return
         handler_map[table_name](df)
 
