@@ -8,3 +8,5 @@ minio>=7.2.0
 structlog>=23.0.0
 email-validator>=2.0.0
 python-json-logger>=2.0.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0

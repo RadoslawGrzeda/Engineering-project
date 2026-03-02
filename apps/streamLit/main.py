@@ -292,7 +292,7 @@ class StreamlitApp:
             # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
             schema_name= file_type
             name, ext = os.path.splitext(uploaded_file.name)
-            file = f"{name}_{datetime.now().strftime('%Y%m%d')}{ext}"
+            file = f"{schema_name.lower()}/{name}_{datetime.now().strftime('%Y%m%d')}{ext}"
             up_data = uploaded_file.getvalue()
             with st.spinner("Wysyłanie pliku do MinIO..."):
                 try:
@@ -313,7 +313,7 @@ class StreamlitApp:
                     )
                     logger.info("File uploaded", extra={
                         "user": _current_user(),
-                        "uploaded_file": file,
+                        "uploaded_file": file.split('/')[-1],
                         "bucket": bucket,
                     })
                     st.success(result_msg)
@@ -321,8 +321,8 @@ class StreamlitApp:
                     try:
                         self._send_file_information_to_db(
                             user_name=_current_user(),
-                            destination_table=file_type,
-                            file_name=file,
+                            destination_table=file_type.lower(),
+                            file_name=file.split('/')[-1],
                             number_of_rows=len(df),
                             file_size=file_size_in_bytes,
                             rejected_rows_count=0,
@@ -335,7 +335,7 @@ class StreamlitApp:
                             "user": _current_user(),
                             'application': 'StreamLit',
                             'method': '_render_upload_section',
-                            "file_name": file,
+                            "file_name":file.split('/')[-1],
                             "error_type": type(e).__name__,
                             "error": str(e),
                         }, exc_info=True)
@@ -345,7 +345,7 @@ class StreamlitApp:
                 except Exception as e:
                     logger.error("Upload failed", extra={
                         "user": _current_user(),
-                        "uploaded_file": file,
+                        "uploaded_file": file.split('/')[-1],
                         "bucket": bucket,
                         "error_type": type(e).__name__,
                         "error": str(e),
