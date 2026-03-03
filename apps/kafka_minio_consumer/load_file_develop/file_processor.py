@@ -372,6 +372,7 @@ class ProcessData:
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
+                raise
 
 
     def _load_chief(self, df: pd.DataFrame) -> None:
