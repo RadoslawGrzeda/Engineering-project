@@ -123,10 +123,19 @@ class KafkaMinioConsumer:
                 process_data.load_to_dead_letter(errors, schema)
             self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
-                process_data.load_to_db(data, schema)
+                try:
+                    process_data.load_to_db(data, schema)
+                except Exception as e:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e))
+                    self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
+                    raise
                 if errors:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len(data),error_message=str(errors), rejected_rows=len(errors))
-                    self.logger.info(f"Data partially successfully load to database {file_key.split('/')[-1]}", extra={'schema': schema, 'file_key': file_key})
+                    if len(data) > 0:
+                        self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len(data),error_message=str(errors), rejected_rows=len(errors))
+                        self.logger.info(f"Data partially successfully load to database {file_key.split('/')[-1]}", extra={'schema': schema, 'file_key': file_key})
+                    else:
+                        self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), rejected_rows=len(errors))
+                        self.logger.error(f"Data failed to load to database {file_key.split('/')[-1]} due to validation errors", extra={'schema': schema, 'file_key': file_key})
                 else:
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len(data))
                     self.logger.info("Data successfully load to database", extra={'schema': schema, 'file_key': file_key})
