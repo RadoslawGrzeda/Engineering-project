@@ -88,12 +88,12 @@ class Chief(BaseModel):
     # is_current: bool = Field(...)
     # date_start: datetime.date = Field(...)
     # date_end: Optional[datetime.date] = Field(None)
-
+# +48-500-101-021
     @field_validator('chief_phone')
     @classmethod
     def validate_chief_phone(cls, v):
         try:
-            regex = r'^\+?[1-9]\d{1,14}$'
+            regex = r'^\+?[1-9]{2}-[0-9]{3}-[0-9]{3}-[0-9]{3}$'
             if not re.match(regex, v):
                 raise ValueError(f"Invalid phone number format: {v}")
             return v
