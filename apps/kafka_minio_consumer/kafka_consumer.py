@@ -6,11 +6,12 @@ from urllib.parse import unquote
 import os
 from dotenv import load_dotenv
 from minio import Minio
-from apps.logger_config import get_logger
+from apps.logger_config import get_logger, correlation_id
 from apps.kafka_minio_consumer.load_file_develop.file_processor import ProcessData
 import io 
 import pandas as pd
 from sqlalchemy import create_engine, text
+import uuid
 
 class KafkaMinioConsumer:
     def __init__(self):
@@ -98,6 +99,7 @@ class KafkaMinioConsumer:
             ''')
             with self.db_engine.connect() as connection:
                 try:
+
                     connection.execute(sql, {   
                         'destination_table': destination_table,
                         'file_name': file_name,
@@ -153,6 +155,7 @@ class KafkaMinioConsumer:
             message = self.consumer.poll(timeout_ms=1.0)
             if message:
                 try:
+                    correlation_id.set(str(uuid.uuid4())[:8])   
                     for tp, messages in message.items():
                         for message in messages:
                             event = json.loads(message.value.decode('utf-8'))
