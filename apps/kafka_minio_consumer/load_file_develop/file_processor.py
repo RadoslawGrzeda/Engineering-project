@@ -21,7 +21,7 @@ SCHEMA_MAP = {
     'sector': Sector,
     'department': Department,
     'segment': Segment,
-    'posinformation': PosInformation,
+    'pos_information': PosInformation,
     'product': Product,
     'contractor': Contractor,
 }
@@ -425,6 +425,9 @@ class ProcessData:
         contractor_email_address = EXCLUDED.contractor_email_address,
         contractor_address = EXCLUDED.contractor_address
         ''')
+        
+        if df.empty:
+            return
 
         if 'contract_number' in df.columns:
             update_contract_sql = text(f''' 
@@ -446,7 +449,7 @@ class ProcessData:
             valid_from = EXCLUDED.valid_from
             ''')
         source_file=self.path
-        contractor_df=df[['contractor_id', 'contractor_name', 'contractor_phone_number', 'contractor_email_address', 'contractor_address', 'contract_number']]
+        contractor_df=df[['contractor_id', 'contractor_name', 'contractor_phone_number', 'contractor_email_address', 'contractor_address']]
    
         
         contractor_df=contractor_df.to_dict(orient='records')
@@ -461,7 +464,7 @@ class ProcessData:
 
             insert_df=update_contract_df.copy()
             insert_df['signed_date']=datetime.date(2025,1,1)
-            insert_df['status']='signed'
+            insert_df['status']='active'
             insert_df['is_current']=True
             insert_df['valid_from']=datetime.datetime.now()
             insert_df['valid_to']=None
@@ -473,6 +476,13 @@ class ProcessData:
 
         with self.engine.begin() as conn:
             try:
+                logger.info("Inserting records", extra={
+                    "table": "contractor",
+                    "records_count": len(contractor_df),
+                    "source_file": source_file,
+                })
+                conn.execute(sql, contractor_df)
+
                 if 'contract_number' in df.columns:
                     logger.info("Updating contract relations", extra={
                         "table": "contract",
@@ -487,13 +497,6 @@ class ProcessData:
                         "source_file": source_file,
                     })
                     conn.execute(insert_contract_sql, insert_df)
-
-                logger.info("Inserting records", extra={
-                    "table": "contractor",
-                    "records_count": len(contractor_df),
-                    "source_file": source_file,
-                })
-                conn.execute(sql, contractor_df)
                 logger.info("Records inserted successfully", extra={
                     "table": "contractor",
                     "records_count": len(contractor_df),
@@ -657,6 +660,15 @@ class ProcessData:
                                         brand, article_codification_date, last_modified_at, source_file)
                    VALUES (:art_key, :art_number, :contractor_id, :segment_id, :department_id,
                            :brand, :article_codification_date, :last_modified_at, :source_file)
+                   ON CONFLICT (art_key) DO UPDATE SET
+                     art_number = EXCLUDED.art_number,
+                        contractor_id = EXCLUDED.contractor_id,
+                        segment_id = EXCLUDED.segment_id,
+                        department_id = EXCLUDED.department_id,
+                        brand = EXCLUDED.brand,
+                        article_codification_date = EXCLUDED.article_codification_date,
+                        last_modified_at = EXCLUDED.last_modified_at,
+                        source_file = EXCLUDED.source_file;
                    """)
 
         existing_contractors = self._get_existing_contractor_ids()
