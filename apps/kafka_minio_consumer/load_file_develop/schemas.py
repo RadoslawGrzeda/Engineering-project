@@ -30,22 +30,26 @@ class Sector(BaseModel):
 class PosInformation(BaseModel):
     # pos_information_id : int =Field(..., gt=0)
     art_key : int = Field(...,gt=2000)
-    ean : str = Field(...,)
+    ean : str = Field(...,min_length=13,max_length=13)
     vat_rate : float = Field(...,gt=0,le=1)
     price_net : float = Field(...,gt=0)
     price_gross : float = Field(...,gt=0)
     
+    @field_validator('ean', mode='before')
+    @classmethod
+    def convert_ean_to_string(cls, v):
+        if isinstance(v, (int, float)):
+            return str(int(v)).zfill(13)
+        return v
+
     @field_validator('ean')
     @classmethod
     def validate_ean(cls, v):
-        try:
-            if len(v) != 13:
-                raise ValueError(f"Invalid ean format: {v}")
-            return v
-        except ValueError:
-            raise
-        except Exception as e:
-            raise ValueError(f"Invalid ean format: {v}. Error: {str(e)}")
+        if len(v) != 13 or not v.isdigit():
+            raise ValueError(f"Invalid ean format: {v}")
+        return v
+
+
 
 class Segment(BaseModel):
     segment_id : int = Field(..., gt=0)
@@ -135,7 +139,7 @@ class Product(BaseModel):
     departament_id : int = Field(..., gt=0)
     contractor_id : int = Field(..., gt=0)
     brand : str = Field(...)
-    pos_information_id : int = Field(..., gt=0)
+    # pos_information_id : int = Field(..., gt=0)
     article_codification_date : datetime.date = Field(...)
 
     # @field_validator('art_number')
@@ -162,13 +166,13 @@ class Contractor(BaseModel):
     contractor_phone_number : str = Field(...)
     contractor_email_address : str = Field(...,min_length=5,max_length=100)
     contractor_address : str = Field(...,min_length=1,max_length=100)
-    # contract_number : str = Field()
+    contract_number : str = Field()
 
     @field_validator('contractor_phone_number')
     @classmethod
-    def validate_contractor_phone_number(cls, v):
+    def validate_chief_phone(cls, v):
         try:
-            regex = r'^\+?[1-9]\d{1,14}$'
+            regex = r'^\+?[1-9]{2}-[0-9]{3}-[0-9]{3}-[0-9]{3}$'
             if not re.match(regex, v):
                 raise ValueError(f"Invalid phone number format: {v}")
             return v
