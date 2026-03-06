@@ -152,9 +152,9 @@ class KafkaMinioConsumer:
             try:
                 len_of_load=process_data.load_to_db(data, schema)
 
-                if errors and len_of_load==0:
+                if errors or len_of_load==0:
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=process_data.engine)
-                elif len_of_load<len(data):
+                elif len_of_load < len(df):
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=process_data.engine)
                 else:
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=process_data.engine)
