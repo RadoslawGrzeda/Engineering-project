@@ -221,6 +221,7 @@ class ProcessData:
                     source_file = EXCLUDED.source_file;''')
                     
         records=df.to_dict(orient='records')
+        records = [{**record, "source_file": source_file} for record in records]
 
         if df.empty:
             logger.warning("Data frame is empty", extra={
@@ -241,6 +242,7 @@ class ProcessData:
                     "source_file": source_file,
                 })
                 conn.execute(sql, records)
+                return len(records)
                 logger.info("Records inserted successfully", extra={
                     "class": self.__class__.__name__,
                     "method": "_load_sector",
@@ -294,6 +296,7 @@ class ProcessData:
         
 
         records=valid.to_dict(orient='records')
+        records = [{**record, "source_file": source_file} for record in records]
 
         if not invalid.empty:
             logger.warning("Rows skipped due to missing sector_id", extra={
@@ -315,6 +318,7 @@ class ProcessData:
                     "source_file": source_file,
                 })
                 conn.execute(sql, records)
+                return len(records)
                 logger.info("Records inserted successfully", extra={
                     "class": self.__class__.__name__,
                     "method": "_load_department",
@@ -422,6 +426,7 @@ class ProcessData:
                     "source_file": source_file,
                 })
                 conn.execute(sql, records)
+                return len(records)
 
                 logger.info("Inserting segment_chief relations", extra={
                     "class": self.__class__.__name__,
@@ -579,6 +584,7 @@ class ProcessData:
                     "source_file": source_file,
                 })
                 conn.execute(sql, contractor_df)
+                return len(contractor_df)
 
                 if 'contract_number' in df.columns:
                     logger.info("Updating  relations", extra={
@@ -688,7 +694,7 @@ class ProcessData:
                                         date_start, last_modified_date, source_file, is_current)
             VALUES (:art_key, :ean, :vat_rate, :price_net, :price_gross, :date_start,
                     :last_modified_date, :source_file, :is_current)
-                
+            
         ''')
 
         existing_art_keys = self._get_existing_art_keys()
@@ -721,7 +727,7 @@ class ProcessData:
 
         if to_insert.empty:
             logger.info("pos_information: no new or changed rows to load.")
-            return
+            raise ValueError("No pos_information records to load: no new or changed rows after price comparison")
 
         to_insert = to_insert.copy()
         to_insert["date_start"] = datetime.date(2023, 1, 1)
@@ -758,6 +764,7 @@ class ProcessData:
                     "source_file": source_file,
                 })
                 conn.execute(insert_sql, valid_df)
+                return len(valid_df)
                 logger.info("Records inserted successfully", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_pos_information",
@@ -869,6 +876,7 @@ class ProcessData:
                     "source_file": self.path,
                 })
                 conn.execute(sql, records)
+                return len(records)
                 logger.info("Records inserted successfully", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_product",
