@@ -38,7 +38,7 @@ CONTRACTS_DIR = os.path.join(os.path.dirname(__file__), "contracts")
 
 BUCKET_OPTIONS: dict[str, list[str]] = {
     "sklep": ["test", "cos"],
-    "produkt": ["Chief", "Segment", "Sector", "Department", "PosInformation", "Contractor", "Product"],
+    "produkt": ["Chief", "Segment", "Sector", "Department", "Pos_Information", "Contractor", "Product"],
 }
 
 BUCKET_LABELS: dict[str, str] = {
@@ -55,6 +55,7 @@ FRESHNESS_LABELS: dict[str, str] = {
 
 
 def load_contract(file_type: str) -> dict[str, Any] | None:
+    file_type = file_type.lower()
     path = os.path.join(CONTRACTS_DIR, f"{file_type}.yaml")
     if not os.path.exists(path):
         logger.warning("Contract not found", extra={
@@ -293,7 +294,7 @@ class StreamlitApp:
             # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
             schema_name= file_type
             name, ext = os.path.splitext(uploaded_file.name)
-            file = f"{schema_name.lower()}/{name}_{datetime.now().strftime('%Y%m%d')}{ext}"
+            file = f"{schema_name.lower()}/{name}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}"
             up_data = uploaded_file.getvalue()
             with st.spinner("Wysyłanie pliku do MinIO..."):
                 try:
@@ -389,7 +390,7 @@ class StreamlitApp:
             for file_name, processed_at, status in page_items:
                 if status == "success":
                     badge_color, label = "#28a745", "Sukces"
-                elif status == "failed":
+                elif status == "error":
                     badge_color, label = "#dc3545", "Błąd"
                 else:
                     badge_color, label = "#ffc107", status or "Nieznany"
