@@ -15,12 +15,13 @@ import uuid
 
 class KafkaMinioConsumer:
     def __init__(self):
+        correlation_id.set(str(uuid.uuid4())[:8])
         load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
         self.logger = get_logger(__name__)
         self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
         self.group_id = os.getenv('KAFKA_GROUP_ID')
         self.topic=os.getenv('KAFKA_TOPIC')
-        self.db_engine = create_engine(os.getenv('POSTGRES_CONNECTION'))
+        # self.db_engine = create_engine(os.getenv('POSTGRES_CONNECTION'))
         # self.airflow_api_url = os.getenv('AIRFLOW_API_URL')
         # self.API_USER = os.getenv('API_USER')
         # self.API_PASSWORD = os.getenv('API_PASSWORD')
@@ -38,10 +39,10 @@ class KafkaMinioConsumer:
                                     max_partition_fetch_bytes=1048576,                        
                                     )
         except Exception as e:
-            self.logger.error("Error creating Kafka consumer: %s", e, extra={'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic})
+            self.logger.error("Error creating Kafka consumer: %s", e, extra={'class': self.__class__.__name__, 'method': "__init__", 'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic})
             raise
         self.consumer.subscribe([self.topic])
-        self.logger.info("Kafka consumer created successfully and subscribed to topic '%s'", self.topic, extra={'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic} )
+        self.logger.info("Kafka consumer created successfully and subscribed to topic '%s'", self.topic, extra={'class': self.__class__.__name__, 'method': "__init__", 'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic} )
 
         try:
             self.minio=Minio (
@@ -51,9 +52,13 @@ class KafkaMinioConsumer:
                 secure=False
             )
         except Exception as e:
-            self.logger.error("Error creating Minio client: %s", e, extra={'minio_address': os.getenv('MINIO_ADDRESS')})
+            self.logger.error("Error creating Minio client: %s", e, 
+            extra={
+                'class': self.__class__.__name__,
+                'method': "__init__",
+                'minio_address': os.getenv('MINIO_ADDRESS')})
             raise
-        self.logger.info("Minio client created successfully", extra={'minio_address': os.getenv('MINIO_ADDRESS')})
+        self.logger.info("Minio client created successfully", extra={'class': self.__class__.__name__, 'method': "__init__", 'minio_address': os.getenv('MINIO_ADDRESS')})
     # def _send_post_request(self, bucket_name, file_key, schema):
     #     try:
     #         response = requests.post(
@@ -77,16 +82,30 @@ class KafkaMinioConsumer:
             response = self.minio.get_object(bucket_name, file_key)
             buffer=io.BytesIO(response.read())
             df=pd.read_csv(buffer)
-            self.logger.info("File '%s' loaded successfully from bucket '%s'", file_key.split('/')[-1], bucket_name, extra={'file_key': file_key, 'bucket_name': bucket_name})
+            self.logger.info("File '%s' loaded successfully from bucket '%s'",
+                            file_key.split('/')[-1],
+                            bucket_name,
+                            extra={
+                                'class': self.__class__.__name__,
+                                'method': "_load_file_from_minio",
+                                'file_key': file_key,
+                                'bucket_name': bucket_name
+                            })
             return df
         except Exception as e:
-            self.logger.error("Error loading file from Minio: %s", e, extra={'file_key': file_key, 'bucket_name': bucket_name})
+            self.logger.error("Error loading file from Minio: %s", e, extra={
+                'class': self.__class__.__name__,
+                'method': "_load_file_from_minio",
+                'file_key': file_key,
+                'bucket_name': bucket_name
+            })
             raise
         finally:
-            response.close()
-            response.release_conn()
+            if response:
+                response.close()
+                response.release_conn()
     
-    def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None):
+    def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None,engine=None):
             sql = text('''
                 UPDATE etl_load_log_product
                 SET status = :status,
@@ -97,7 +116,7 @@ class KafkaMinioConsumer:
                 WHERE file_name = :file_name
                 and destination_table = :destination_table
             ''')
-            with self.db_engine.connect() as connection:
+            with engine.connect() as connection:
                 try:
 
                     connection.execute(sql, {   
@@ -110,7 +129,13 @@ class KafkaMinioConsumer:
                     })
                     connection.commit()
                 except Exception as e:
-                    self.logger.error("Error updating file status in database: %s", e, extra={'file_name': file_name, 'destination_table': destination_table, 'status': status})
+                    self.logger.error("Error updating file status in database: %s", e, extra={
+                        'class': self.__class__.__name__,
+                        'method': "_change_file_status_in_db",
+                        'file_name': file_name,
+                        'destination_table': destination_table,
+                        'status': status
+                    })
                     raise
     
     def _validate_and_load_to_db(self, df, schema, file_key):
@@ -118,32 +143,32 @@ class KafkaMinioConsumer:
         '''
         try:
             process_data=ProcessData(df,file_key)
-            self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='pending')
+            self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='pending',engine=process_data.engine)
             data, errors = process_data.validate_shape(schema)
             if errors:
-                self.logger.error("Schema validation errors: %s", errors, extra={'schema': schema, 'file_key': file_key})
+                # self.logger.error("Schema validation errors: %s", errors, extra={'schema': schema, 'file_key': file_key})
                 process_data.load_to_dead_letter(errors, schema)
-            self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
+            # self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
                 try:
                     process_data.load_to_db(data, schema)
                 except Exception as e:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e))
-                    self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=process_data.engine)
+                    # self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
                     raise
                 if errors:
                     if len(data) > 0:
                         self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len(data),error_message=str(errors), rejected_rows=len(errors))
-                        self.logger.info(f"Data partially successfully load to database {file_key.split('/')[-1]}", extra={'schema': schema, 'file_key': file_key})
+                        # self.logger.info(f"Data partially successfully load to database {file_key.split('/')[-1]}", extra={'schema': schema, 'file_key': file_key})
                     else:
-                        self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), rejected_rows=len(errors))
-                        self.logger.error(f"Data failed to load to database {file_key.split('/')[-1]} due to validation errors", extra={'schema': schema, 'file_key': file_key})
+                        self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), rejected_rows=len(errors), engine=process_data.engine)
+                        # self.logger.error(f"Data failed to load to database {file_key.split('/')[-1]} due to validation errors", extra={'schema': schema, 'file_key': file_key})
                 else:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len(data))
-                    self.logger.info("Data successfully load to database", extra={'schema': schema, 'file_key': file_key})
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len(data), engine=process_data.engine)
+                    # self.logger.info("Data successfully load to database", extra={'schema': schema, 'file_key': file_key})
             except Exception as e:
-                self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e))
-                self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
+                self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=process_data.engine)
+                # self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
                 raise
         except Exception as e:
             self.logger.error("Error processing data: %s", e, extra={'schema': schema, 'file_key': file_key}, exc_info=True)
@@ -152,13 +177,13 @@ class KafkaMinioConsumer:
             
     def consume_messages(self):
         while True:
-            message = self.consumer.poll(timeout_ms=1.0)
+            message = self.consumer.poll(timeout_ms=1000)
             if message:
                 try:
                     correlation_id.set(str(uuid.uuid4())[:8])   
                     for tp, messages in message.items():
-                        for message in messages:
-                            event = json.loads(message.value.decode('utf-8'))
+                        for msg in messages:
+                            event = json.loads(msg.value.decode('utf-8'))
                             bucket_name = event['Records'][0]['s3']['bucket']['name']
                             raw_name = event['Records'][0]['s3']['object']['key']
                             file_key = unquote(raw_name)
@@ -170,7 +195,13 @@ class KafkaMinioConsumer:
                             self.consumer.commit()
                             # self._send_post_request(bucket_name,schema, file_key)
                 except Exception as e:
-                    self.logger.error("Error processing message: %s", e, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema}, exc_info=True)
+                    self.logger.error("Error processing message from kafka: %s", e, extra={
+                        'class': self.__class__.__name__,
+                        'method': "consume_messages",
+                        'file_key': file_key,
+                        'bucket_name': bucket_name,
+                        'schema': schema
+                    }, exc_info=True)
                     continue
 
 if __name__ == "__main__":
