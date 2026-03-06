@@ -48,8 +48,9 @@ class ProcessData:
                 except ValidationError as e:
                     errors.append((line_no, row, e.json()))
                 except Exception as e:
-                    logger.error("Unexpected row error", extra={
-                        # "df": self.,
+                    logger.error("Error processing row", extra={
+                        'class': self.__class__.__name__,
+                        'method': "validate_shape",
                         "line_no": line_no,
                         "row_data": row,
                         "error_type": type(e).__name__,
@@ -58,11 +59,17 @@ class ProcessData:
         except Exception as e:
             logger.error("Failed to read file", extra={
                 # "file_path": self.path,
+                "class": self.__class__.__name__,
+                "method": "validate_shape",
+                "file_path": self.path,
                 "error_type": type(e).__name__,
                 "error": str(e),
             })
+            raise
 
-        logger.info("Validation completed", extra={
+        logger.info("Validation file completed", extra={
+            'class': self.__class__.__name__,
+            'method': "validate_shape",
             "file_path": self.path,
             "total_rows_read": line_no - 1,
             "valid_records": len(records),
@@ -71,6 +78,8 @@ class ProcessData:
 
         if errors:
             logger.warning("Validation errors found", extra={
+                'class': self.__class__.__name__,
+                'method': "validate_shape",
                 "file_path": self.path,
                 "invalid_records": len(errors),
             })
@@ -156,8 +165,9 @@ class ProcessData:
             'product': self._load_product,
         }        
         if table_name not in handler_map:
-            logger.error("Load to DB not implemented for table", extra={"table": table_name,"method": "load_to_db",'class': self.__class__.__name__})
-            return
+            logger.error("Load to DB not implemented for table", 
+            extra={"table": table_name,"method": "load_to_db",'class': self.__class__.__name__})
+            raise NotImplementedError(f"Load to DB not implemented for table: {table_name}")
         handler_map[table_name](df)
 
     def load_to_dead_letter(self, row_data:List[Tuple[int, dict, str]], source_table):
@@ -169,13 +179,16 @@ class ProcessData:
             records=[{
                 "source_table": source_table,
                 "source_file": self.path,
-                "raw_row": json.dumps(row_data,default=str),
+                "raw_row": json.dumps(row,default=str),
                 "error_details": error_details,
                 "line_no": line_no,  
-            } for line_no, row_data, error_details in row_data]
+            } for line_no, row, error_details in row_data]
+            
             with self.engine.begin() as conn:
                 try:            
                     logger.info("Inserting records into dead letter", extra={
+                        "class": self.__class__.__name__,
+                        "method": "load_to_dead_letter",
                         "table": "dead_letter",
                         "records_count": len(records),
                         "source_file": self.path,
@@ -183,7 +196,11 @@ class ProcessData:
                     })
                     conn.execute(sql, records)
                 except Exception as e:
-                    logger.info('Failed inserting into dead letter')
+                    logger.info('Failed inserting into dead letter',extra={
+                        'class': self.__class__.__name__,
+                        'method': "load_to_dead_letter",
+                        "table": "dead_letter",
+                    })
         except Exception as e:
             logger.error("Failed to load to dead letter", extra={
                 "source_table": source_table,
@@ -191,12 +208,13 @@ class ProcessData:
                 "error_type": type(e).__name__,
                 "error": str(e),
             }, exc_info=True)
+            raise
 
     def _load_sector(self, df: pd.DataFrame) -> None:
         source_file=self.path
         sql=text(f'''
                     INSERT INTO sector (sector_id, sector_name, sector_code,source_file)
-                    VALUES (:sector_id, :sector_name, :sector_code,{source_file!r})
+                    VALUES (:sector_id, :sector_name, :sector_code,:source_file)
                     ON CONFLICT (sector_id) DO UPDATE SET
                     sector_name = EXCLUDED.sector_name,
                     sector_code = EXCLUDED.sector_code,
@@ -204,35 +222,61 @@ class ProcessData:
                     
         records=df.to_dict(orient='records')
 
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_sector",
+                "table": "sector",
+                "source_file": source_file,
+            })
+            raise ValueError("No valid records to insert")
+
         with self.engine.begin() as conn:
             try:
                 logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_sector",
                     "table": "sector",
                     "records_count": len(records),
                     "source_file": source_file,
                 })
                 conn.execute(sql, records)
                 logger.info("Records inserted successfully", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_sector",
                     "table": "sector",
                     "records_count": len(records),
                 })
             except Exception as e:
-                logger.error("DB insert failed", extra={
+                logger.error("Error inserting records into table", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_sector",
                     "table": "sector",
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
+                raise
 
 
     def _get_existing_sectors(self) -> set[int]:
         with self.engine.begin() as conn:
             rows=conn.execute(text("SELECT sector_id FROM sector"))
-        return set(row[0] for row in rows)
+            return set(row[0] for row in rows)
     
 
     def _load_department(self, df: pd.DataFrame) -> None:
         source_file=self.path
+
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_department",
+                "table": "department",
+                "source_file": source_file,
+            })
+            raise ValueError("No department records to load: DataFrame is empty")
+
 
         existing_sectors = self._get_existing_sectors()
         invalid = df[~df['sector_id'].isin(existing_sectors)].copy()
@@ -241,7 +285,7 @@ class ProcessData:
 
         sql=text(f"""
                     INSERT INTO department (department_id, department_name,sector_id,source_file)
-                    VALUES (:department_id, :department_name, :sector_id, {source_file!r})
+                    VALUES (:department_id, :department_name, :sector_id, :source_file)
                     ON CONFLICT (department_id) DO UPDATE SET
                         department_name = EXCLUDED.department_name,
                         sector_id = EXCLUDED.sector_id,
@@ -253,6 +297,8 @@ class ProcessData:
 
         if not invalid.empty:
             logger.warning("Rows skipped due to missing sector_id", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_department",
                 "table": "department",
                 "skipped_count": len(invalid),
                 "invalid_sector_ids": invalid['sector_id'].unique().tolist(),
@@ -262,31 +308,47 @@ class ProcessData:
         with self.engine.begin() as conn:
             try:
                 logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_department",
                     "table": "department",
                     "records_count": len(records),
                     "source_file": source_file,
                 })
                 conn.execute(sql, records)
                 logger.info("Records inserted successfully", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_department",
                     "table": "department",
                     "records_count": len(records),
                 })
             except Exception as e:
-                logger.error("DB insert failed", extra={
+                logger.error("Error inserting records into table", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_department",
                     "table": "department",
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
+                raise
 
 
     def _load_segment(self, df:pd.DataFrame) -> None:
+        source_file=self.path
+        
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_segment",
+                "table": "segment",
+                "source_file": source_file,
+            })
+            raise ValueError("No segment records to load: DataFrame is empty")
 
         existing_sectors = self._get_existing_sectors()
         invalid = df[~df['sector_id'].isin(existing_sectors)].copy()
         valid = df[df['sector_id'].isin(existing_sectors)].copy()
 
-        source_file=self.path
         sql=text(f"""
                     INSERT INTO segment (segment_id, segment_code, segment_name, sector_id, source_file)
                     VALUES (:segment_id, :segment_code, :segment_name, :sector_id, :source_file)
@@ -334,6 +396,8 @@ class ProcessData:
 
         if not invalid.empty:
             logger.warning("Rows skipped due to missing sector_id", extra={
+                "class": self.__class__.__name__,
+                "method": "_load_segment",
                 "table": "segment",
                 "skipped_count": len(invalid),
                 "invalid_sector_ids": invalid['sector_id'].unique().tolist(),
@@ -343,12 +407,16 @@ class ProcessData:
         with self.engine.begin() as conn:
             try:
                 logger.info("Updating segment_chief relations", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_segment",
                     "table": "segment_chief",
                     "records_count": len(updateRecords),
                 })
                 conn.execute(update_sql, updateRecords)
 
                 logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_segment",
                     "table": "segment",
                     "records_count": len(records),
                     "source_file": source_file,
@@ -356,17 +424,23 @@ class ProcessData:
                 conn.execute(sql, records)
 
                 logger.info("Inserting segment_chief relations", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_segment",
                     "table": "segment_chief",
                     "records_count": len(updateRecords),
                 })
                 conn.execute(insert_relation_sql, updateRecords)
 
                 logger.info("Records inserted successfully", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_segment",
                     "table": "segment",
                     "records_count": len(records),
                 })
             except Exception as e:
                 logger.error("DB insert failed", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_segment",
                     "table": "segment",
                     "source_file": source_file,
                     "error_type": type(e).__name__,
@@ -376,7 +450,17 @@ class ProcessData:
 
 
     def _load_chief(self, df: pd.DataFrame) -> None:
-        
+        source_file=self.path
+
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_chief",
+                "table": "chief",
+                "source_file": source_file,
+            })
+            raise ValueError("No chief records to load: DataFrame is empty")
+
         sql = text(f"""
                     INSERT INTO chief (chief_id, chief_first_name, chief_last_name, email_address, phone_number,source_file)
                     VALUES (:chief_id, :chief_first_name, :chief_last_name, :chief_email, :chief_phone, :source_file)
@@ -387,7 +471,6 @@ class ProcessData:
                         ;
                     """)
         
-        source_file=self.path
 
         today=datetime.date.today()
         df_chief=df.copy()
@@ -397,25 +480,33 @@ class ProcessData:
             try:
                 record = df_chief.to_dict(orient='records')
                 logger.info("Inserting records", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_chief",
                     "table": "chief",
                     "records_count": len(record),
                     "source_file": source_file,
                 })
                 conn.execute(sql, record)
                 logger.info("Records inserted successfully", extra={
+                    "class": self.__class__.__name__,
+                    "method": "_load_chief",
                     "table": "chief",
                     "records_count": len(record),
                 })
             except Exception as e:
                 logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_chief",
                     "table": "chief",
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
+                raise
 
     
     def _load_contractor(self, df: pd.DataFrame) -> None:
+        source_file=self.path
         sql = text(f'''
         INSERT INTO contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email_address, contractor_address, source_file, created_at,updated_at)
         VALUES (:contractor_id, :contractor_name, :contractor_phone_number, :contractor_email_address, :contractor_address, :source_file, :created_at, :updated_at)
@@ -425,9 +516,15 @@ class ProcessData:
         contractor_email_address = EXCLUDED.contractor_email_address,
         contractor_address = EXCLUDED.contractor_address
         ''')
-        
+
         if df.empty:
-            return
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_contractor",
+                "table": "contractor",
+                "source_file": source_file,
+            })
+            raise ValueError("No contractor records to load: DataFrame is empty")
 
         if 'contract_number' in df.columns:
             update_contract_sql = text(f''' 
@@ -448,9 +545,7 @@ class ProcessData:
             status = EXCLUDED.status,
             valid_from = EXCLUDED.valid_from
             ''')
-        source_file=self.path
         contractor_df=df[['contractor_id', 'contractor_name', 'contractor_phone_number', 'contractor_email_address', 'contractor_address']]
-   
         
         contractor_df=contractor_df.to_dict(orient='records')
         for record in contractor_df:    
@@ -477,6 +572,8 @@ class ProcessData:
         with self.engine.begin() as conn:
             try:
                 logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_contractor",
                     "table": "contractor",
                     "records_count": len(contractor_df),
                     "source_file": source_file,
@@ -484,70 +581,99 @@ class ProcessData:
                 conn.execute(sql, contractor_df)
 
                 if 'contract_number' in df.columns:
-                    logger.info("Updating contract relations", extra={
+                    logger.info("Updating  relations", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_contractor",
                         "table": "contract",
                         "records_count": len(update_contract_df),
                         "source_file": source_file,
                     })
                     conn.execute(update_contract_sql, update_contract_df)
 
-                    logger.info("Inserting contract records", extra={
+                    logger.info("Inserting records", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_contractor",
                         "table": "contract",
                         "records_count": len(insert_df),
                         "source_file": source_file,
                     })
                     conn.execute(insert_contract_sql, insert_df)
                 logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_contractor",
                     "table": "contractor",
                     "records_count": len(contractor_df),
                 })
             except Exception as e:
                 logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_contractor",
                     "table": "contractor",
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
+                raise
 
 
     def _get_existing_art_keys(self) -> set[int]:
         with self.engine.begin() as conn:
             rows = conn.execute(text("SELECT art_key FROM product"))
-        return set(row[0] for row in rows)
+            return set(row[0] for row in rows)
 
     def _get_current_pos_information(self, art_keys: set) -> pd.DataFrame:
         """Bieżące wiersze pos_information (date_end IS NULL) dla podanych art_key."""
-        if not art_keys:
-            return pd.DataFrame(columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"])
-        with self.engine.begin() as conn:
-            placeholders = ",".join(str(k) for k in art_keys)
-            q = text(
-                "SELECT art_key, ean, price_net, price_gross, vat_rate "
-                "FROM pos_information WHERE date_end IS NULL AND art_key IN (" + placeholders + ")"
-            )
-            rows = conn.execute(q)
-            return pd.DataFrame(
-                rows.fetchall(),
-                columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"],
-            )
+        try:
+            if not art_keys:
+                return pd.DataFrame(columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"])
+            with self.engine.begin() as conn:
+                placeholders = ",".join(str(k) for k in art_keys)
+                q = text(
+                    "SELECT art_key, ean, price_net, price_gross, vat_rate "
+                    "FROM pos_information WHERE date_end IS NULL AND art_key IN (" + placeholders + ")"
+                )
+                rows = conn.execute(q)
+                return pd.DataFrame(
+                    rows.fetchall(),
+                    columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"],
+                )
+        except Exception as e:
+            logger.error("Error fetching current pos information", extra={
+                'class': self.__class__.__name__,
+                'method': "_get_current_pos_information",
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            raise
 
     def _get_existing_contractor_ids(self) -> set[int]:
         with self.engine.begin() as conn:
             rows = conn.execute(text("SELECT contractor_id FROM contractor"))
-        return set(row[0] for row in rows)
+            return set(row[0] for row in rows)
 
     def _get_existing_segment_ids(self) -> set[int]:
         with self.engine.begin() as conn:
             rows = conn.execute(text("SELECT segment_id FROM segment"))
-        return set(row[0] for row in rows)
+            return set(row[0] for row in rows)
 
     def _get_existing_department_ids(self) -> set[int]:
         with self.engine.begin() as conn:
             rows = conn.execute(text("SELECT department_id FROM department"))
-        return set(row[0] for row in rows)
+            return set(row[0] for row in rows)
 
     def _load_pos_information(self, df: pd.DataFrame) -> None:
         """Wstawia tylko wiersze nowe lub ze zmienioną ceną. Ten sam (art_key, ean) i ta sama cena = pomijamy."""
+
+        source_file=self.path
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_pos_information",
+                "table": "pos_information",
+                "source_file": source_file,
+            })
+            raise ValueError("No pos_information records to load: DataFrame is empty")
+
         update_sql = text('''
             UPDATE pos_information
             SET date_end = :date_end,
@@ -565,12 +691,11 @@ class ProcessData:
                 
         ''')
 
-        source_file = self.path
         existing_art_keys = self._get_existing_art_keys()
         valid = df[df["art_key"].isin(existing_art_keys)].copy()
 
-        if valid.empty:
-            return
+        # if valid.empty:
+        #     return
 
         # Pobierz bieżące ceny z bazy – wstawiamy tylko gdy (art_key, ean) nowe lub cena się zmieniła
         current = self._get_current_pos_information(set(valid["art_key"]))
@@ -617,6 +742,8 @@ class ProcessData:
             try:
                 if update_rows:
                     logger.info("Closing outdated pos_information records", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_pos_information",
                         "table": "pos_information",
                         "records_count": len(update_rows),
                         "source_file": source_file,
@@ -624,23 +751,31 @@ class ProcessData:
                     conn.execute(update_sql, update_rows)
 
                 logger.info("Inserting new pos_information records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_pos_information",
                     "table": "pos_information",
                     "records_count": len(valid_df),
                     "source_file": source_file,
                 })
                 conn.execute(insert_sql, valid_df)
                 logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_pos_information",
                     "table": "pos_information",
                     "records_count": len(valid_df),
+                    "source_file": source_file,
                 })
             except Exception as e:
-                logger.error("DB insert failed", extra={
+                logger.error("Error with pos_information loading", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_pos_information",
                     "table": "pos_information",
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
-                raise
+                raise 
+            
 
     def _load_product(self, df: pd.DataFrame) -> None:
         """
@@ -648,12 +783,16 @@ class ProcessData:
         contractor_id, segment_id, department_id, brand, article_codification_date,
         last_modified_at, source_file. Validates FK to contractor, segment, department.
         """
+        source_file=self.path
         if df.empty:
             logger.warning("No product records to load", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_product",
                 "table": "product",
                 "reason": "DataFrame is empty",
+                "source_file": source_file
             })
-            return
+            raise ValueError("No product records to load: DataFrame is empty")
 
         sql = text("""
                    INSERT INTO product (art_key, art_number, contractor_id, segment_id, department_id,
@@ -688,16 +827,20 @@ class ProcessData:
 
         if not invalid.empty:
             logger.warning("Rows skipped due to invalid FK", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_product",
                 "table": "product",
                 "skipped_count": len(invalid),
                 "source_file": self.path
             })
         if valid.empty:
             logger.warning("No valid product records to insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_product",
                 "table": "product",
                 "source_file": self.path,
             })
-            return
+            raise ValueError("No valid product records to load after FK validation: DataFrame is empty")
 
         valid = valid[
             [
@@ -719,17 +862,23 @@ class ProcessData:
         with self.engine.begin() as conn:
             try:
                 logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_product",
                     "table": "product",
                     "records_count": len(records),
                     "source_file": self.path,
                 })
                 conn.execute(sql, records)
                 logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_product",
                     "table": "product",
                     "records_count": len(records),
                 })
             except Exception as e:
                 logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_product",
                     "table": "product",
                     "source_file": self.path,
                     "error_type": type(e).__name__,
