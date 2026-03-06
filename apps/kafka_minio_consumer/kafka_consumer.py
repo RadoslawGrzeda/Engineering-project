@@ -150,28 +150,20 @@ class KafkaMinioConsumer:
                 process_data.load_to_dead_letter(errors, schema)
             # self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
-                try:
-                    process_data.load_to_db(data, schema)
-                except Exception as e:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=process_data.engine)
-                    # self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
-                    raise
-                if errors:
-                    if len(data) > 0:
-                        self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len(data),error_message=str(errors), rejected_rows=len(errors))
-                        # self.logger.info(f"Data partially successfully load to database {file_key.split('/')[-1]}", extra={'schema': schema, 'file_key': file_key})
-                    else:
-                        self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), rejected_rows=len(errors), engine=process_data.engine)
-                        # self.logger.error(f"Data failed to load to database {file_key.split('/')[-1]} due to validation errors", extra={'schema': schema, 'file_key': file_key})
+                len_of_load=process_data.load_to_db(data, schema)
+
+                if errors and len_of_load==0:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=process_data.engine)
+                elif len_of_load<len(data):
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=process_data.engine)
                 else:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len(data), engine=process_data.engine)
-                    # self.logger.info("Data successfully load to database", extra={'schema': schema, 'file_key': file_key})
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=process_data.engine)
             except Exception as e:
                 self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=process_data.engine)
                 # self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
                 raise
         except Exception as e:
-            self.logger.error("Error processing data: %s", e, extra={'schema': schema, 'file_key': file_key}, exc_info=True)
+            self.logger.error("Error processing data: %s", e, extra={'class': self.__class__.__name__, 'method': "_validate_and_load_to_db", 'schema': schema, 'file_key': file_key}, exc_info=True)
             raise
 
             
