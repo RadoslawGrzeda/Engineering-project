@@ -12,7 +12,7 @@ class CorrelationFilter(logging.Filter):
 def get_logger(name : str) -> logging.Logger:
     logger = logging.getLogger(name)
 
-    if logger.hasHandlers():
+    if logger.handlers:
         return logger
 
     logger.setLevel(logging.INFO)
@@ -26,5 +26,6 @@ def get_logger(name : str) -> logging.Logger:
     handler.setFormatter(formatter)
     handler.addFilter(CorrelationFilter())
     logger.addHandler(handler)
+    logger.propagate = False
 
     return logger
