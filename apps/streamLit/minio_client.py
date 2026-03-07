@@ -1,14 +1,13 @@
 from minio import Minio
 from dotenv import load_dotenv
 import os
+import sys
 load_dotenv()
-import logging
 
-logging.basicConfig(level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
+from apps.logger_config import get_logger
 
-logger=logging.getLogger(__name__)
+logger = get_logger(__name__, service="streamlit")
 
 class MinioClient:
     def __init__(self):
@@ -22,18 +21,40 @@ class MinioClient:
     def upload_file(self,client_name:str,bucket_name:str,file_name:str,file_data:bytes,length:int,content_type:str):
         try:
             self.client.put_object(bucket_name,file_name,file_data,length,content_type)
-            logger.info(f"File {file_name} uploaded to bucket {bucket_name}")
+            logger.info("File uploaded to MinIO", extra={
+                "file_name": file_name,
+                "bucket": bucket_name,
+                "class": "MinioClient",
+                "method": "upload_file",
+            })
             return f'Successfully uploaded file {file_name} to bucket {bucket_name}'
         except Exception as e:
-            logger.error(f"Error uploading file {file_name} to bucket {bucket_name}: {e}")
+            logger.error("Error uploading file to MinIO", extra={
+                "file_name": file_name,
+                "bucket": bucket_name,
+                "class": "MinioClient",
+                "method": "upload_file",
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
             return f'Error uploading file {file_name} to bucket {bucket_name} : {e}'
     def make_bucket(self,client_name:str,bucket_name:str):
         try:
             self.client.make_bucket(bucket_name)
-            logger.info(f"Bucket {bucket_name} created")
+            logger.info("Bucket created", extra={
+                "bucket": bucket_name,
+                "class": "MinioClient",
+                "method": "make_bucket",
+            })
             return True
         except Exception as e:
-            logger.error(f"Error creating bucket {bucket_name}: {e}")
+            logger.error("Error creating bucket", extra={
+                "bucket": bucket_name,
+                "class": "MinioClient",
+                "method": "make_bucket",
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
             return False
     def bucket_exists(self,bucket_name:str):
         return self.client.bucket_exists(bucket_name)
