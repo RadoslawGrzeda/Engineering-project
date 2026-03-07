@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, service="streamlit")
 
 
 def _current_user() -> str:
@@ -224,7 +224,7 @@ class StreamlitApp:
             df_contract = pd.DataFrame(col_defs)[["name", "type", "nullable"]]
             df_contract.columns = ["Kolumna", "Typ", "Nullable"]
             df_contract["Nullable"] = df_contract["Nullable"].map({True: "tak", False: "nie"})
-            st.dataframe(df_contract, use_container_width=True, hide_index=True)
+            st.dataframe(df_contract, width="stretch", hide_index=True)
 
     def _render_upload_section(self, bucket: str, file_type: str):
         st.markdown("---")
@@ -279,7 +279,7 @@ class StreamlitApp:
                 return
 
         with st.expander("Podgląd danych (pierwsze 10 wierszy)", expanded=True):
-            st.dataframe(df.head(10), use_container_width=True, hide_index=True)
+            st.dataframe(df.head(10), width="stretch", hide_index=True)
 
         st.markdown("---")
         col_info, col_btn = st.columns([3, 1])
@@ -288,7 +288,7 @@ class StreamlitApp:
             st.markdown(f"**Plik:** `{uploaded_file.name}`")
             st.markdown(f"**Rozmiar:** `{size_kb:.1f} KB`  |  **Wierszy:** `{len(df)}`")
         with col_btn:
-            send = st.button("Wyślij", type="primary", use_container_width=True)
+            send = st.button("Wyślij", type="primary", width="stretch")
 
         if send:
             # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
