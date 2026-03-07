@@ -1,0 +1,47 @@
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: false
+      templates:
+        - condition:
+            or:
+              - contains:
+                  docker.container.name: "kafka-minio-consumer"
+              - equals:
+                  docker.container.name: "streamlit"
+              - equals:
+                  docker.container.name: "broker"
+              - equals:
+                  docker.container.name: "minio"
+              - equals:
+                  docker.container.name: "redpanda-console"
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/${data.docker.container.id}/*.log
+
+processors:
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      overwrite_keys: true
+      add_error_key: true
+  - drop_fields:
+      fields: ["agent", "ecs", "host", "input"]
+      ignore_missing: true
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "logs-%{+yyyy.MM.dd}"
+
+setup.template:
+  name: "logs"
+  pattern: "logs-*"
+  settings:
+    index.number_of_shards: 1
+    index.number_of_replicas: 0
+
+setup.ilm.enabled: false
+
+logging.level: info
+logging.to_stderr: true

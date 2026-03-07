@@ -36,9 +36,6 @@ columns:
   - name: brand
     type: string
     nullable: false
-  - name: pos_information_id
-    type: integer
-    nullable: false
   - name: article_codification_date
     type: date
     nullable: false
