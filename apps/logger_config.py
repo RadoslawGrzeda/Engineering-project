@@ -9,7 +9,7 @@ class CorrelationFilter(logging.Filter):
         record.correlation_id = correlation_id.get()
         return True
 
-def get_logger(name : str) -> logging.Logger:
+def get_logger(name : str, service: str = "unknown") -> logging.Logger:
     logger = logging.getLogger(name)
 
     if logger.handlers:
@@ -19,13 +19,24 @@ def get_logger(name : str) -> logging.Logger:
 
     handler = logging.StreamHandler()
     formatter = jsonlogger.JsonFormatter(
-        fmt="%(asctime)s %(levelname)s %(name)s %(message)s %(correlation_id)s",
+        fmt="%(asctime)s %(levelname)s %(name)s %(message)s %(correlation_id)s %(service)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
         rename_fields={"asctime": "timestamp", "levelname": "level", "name": "logger"},
     )
     handler.setFormatter(formatter)
     handler.addFilter(CorrelationFilter())
+    handler.addFilter(_ServiceFilter(service))
     logger.addHandler(handler)
     logger.propagate = False
 
     return logger
+
+
+class _ServiceFilter(logging.Filter):
+    def __init__(self, service: str):
+        super().__init__()
+        self._service = service
+
+    def filter(self, record):
+        record.service = self._service
+        return True

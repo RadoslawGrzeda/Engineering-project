@@ -1,3 +1,5 @@
+# language=PostgreSQL
+
 import pandas as pd
 import csv
 from typing import List, Tuple, Type, TypeVar
@@ -8,13 +10,15 @@ from dotenv import load_dotenv
 import datetime
 import os
 import json
-from apps.kafka_minio_consumer.load_file_develop.schemas import Segment, Sector, Department, Chief, PosInformation, Product, Contractor
+from apps.kafka_minio_consumer.load_file_develop.product_schema import Segment, Sector, Department, Chief, PosInformation, Product, Contractor
+from apps.kafka_minio_consumer.load_file_develop.shops_schema import Site, SiteInfo, SiteFormat, SiteAddress, SiteContact
 load_dotenv()
+
 from apps.logger_config import get_logger
 
 T = TypeVar('T', bound=BaseModel)
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, service="kafka-minio-consumer")
 
 SCHEMA_MAP = {
     'chief': Chief,
@@ -24,6 +28,11 @@ SCHEMA_MAP = {
     'pos_information': PosInformation,
     'product': Product,
     'contractor': Contractor,
+    'site': Site,
+    'site_info': SiteInfo,
+    'site_format': SiteFormat,
+    'site_address': SiteAddress,
+    'site_contact': SiteContact,
 }
 
 class ProcessData:
@@ -163,6 +172,11 @@ class ProcessData:
             'pos_information': self._load_pos_information,
             'contractor': self._load_contractor,
             'product': self._load_product,
+            'site': self._load_site,
+            'site_info': self._load_site_info,
+            'site_format': self._load_site_format,
+            'site_address': self._load_site_address,
+            'site_contact': self._load_site_contact,
         }        
         if table_name not in handler_map:
             logger.error("Load to DB not implemented for table", 
@@ -935,15 +949,123 @@ class ProcessData:
                     "error": str(e),
                 }, exc_info=True)
                 raise
+    '''
+    methods for loading site tables
+    '''
+    def _load_site(self, df: pd.DataFrame) -> None:
+        source_file=self.path
 
-# sector -> ok
-# department -> ok
-# #
-# path='/Users/radoslaw/Desktop/Engineering-project/apps/load_file_develop/data/generated_masterdata_part1_v3/pos_information.csv'
-# process_data=process_data(path)
-# df_pos_information, errors=process_data.validate_shape(PosInformation)
-# # print(errors)
-# process_data.load_to_db(df_pos_information, 'pos_information')
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site",
+                "table": "site",
+                "source_file": source_file,
+            })
+            raise ValueError("No site records to load: DataFrame is empty")
+        
+        sql = text(f'''
+                    INSERT INTO site (site_unique_code, site_code, created_at, last_modified_at, source_file)
+                    VALUES (:site_unique_code, :site_code, :created_at, :last_modified_at, :source_file)
+                    ON CONFLICT (site_unique_code) DO UPDATE SET
+                        site_code = EXCLUDED.site_code,
+                        last_modified_at = EXCLUDED.last_modified_at,
+                        source_file = EXCLUDED.source_file;
+                    ''')
+        df_site=df.copy()
+        df_site['created_at']=datetime.date.today()
+        df_site['last_modified_at']=datetime.date.today()
+        df_site['source_file']=source_file
+        records=df_site.to_dict(orient='records')
+        
+        try:
+            logger.info("Inserting records", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site",
+                "table": "site",
+                "records_count": len(records),
+                "source_file": source_file,
+            })
+            with self.engine.begin() as conn:
+                conn.execute(sql, records)
+            logger.info("Records inserted successfully", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site",
+                "table": "site",
+                "records_count": len(records),
+            })
+            return len(records)
+        except Exception as e:
+            logger.error("DB insert failed", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site",
+                "table": "site",
+                "source_file": source_file,
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            raise
+    
+    def _get_existing_site_codes(self) -> set[str]:
+        try:
+            with self.engine.begin() as conn:
+                rows = conn.execute(text('SELECT site_unique_code FROM site'))
+                return set(row[0] for row in rows)
+        except Exception as e:
+            logger.error("Error fetching existing site codes", extra={
+                "class": self.__class__.__name__,
+                "method": "_get_existing_site_codes",
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            raise
 
 
+    def _load_site_info(self, df: pd.DataFrame) -> None:
+        # Implementacja podobna do _load_site, z uwzględnieniem specyfiki tabeli site_info
+        source_file=self.path
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_info",
+                "table": "site_info",
+                "source_file": source_file,
+            })
+            raise ValueError("No site records to load: DataFrame is empty")
+        pass
+# class SiteInfo(BaseModel):
+#     site_id: str = Field(...)
+#     site_status_code: str = Field(...)
+#     site_opening_date: Optional[date] = Field(None)
+#     site_closing_date: Optional[date] = Field(None)
+#     is_current: Optional[bool] = Field(None)
+#     valid_from: Optional[date] = Field(None)
+#     valid_to: Optional[date] = Field(None)
 
+# class SiteFormat(BaseModel):
+#     site_id: str = Field(...)
+#     site_format_unique_code: str = Field(...)
+#     is_current: Optional[bool] = Field(None)
+#     start_date: Optional[date] = Field(None)
+#     valid_to: Optional[date] = Field(None)
+
+
+# class SiteContact(BaseModel):
+#     site_id: str = Field(...)
+#     contact_type: str = Field(...)
+#     contact_value: str = Field(...)
+#     contact_role: str = Field(...)
+#     valid_from: Optional[date] = Field(None)
+#     valid_to: Optional[date] = Field(None)
+#     is_primary: Optional[bool] = Field(None)
+
+# class SiteAddress(BaseModel):
+#     site_id: str = Field(...)
+#     site_address_zip_code: str = Field(...)
+#     site_address_city: str = Field(..., min_length=1, max_length=100)
+#     site_address_complement: str = Field(..., min_length=1, max_length=255)
+#     city_code: str = Field(..., min_length=2, max_length=10)
+#     country_code: str = Field(..., min_length=2, max_length=5)
+#     site_geo_coordinate_x_value: Optional[float] = Field(None)
+#     site_geo_coordinate_y_value: Optional[float] = Field(None)
+#     is_current: Optional[bool] = Field(None)
