@@ -1,11 +1,10 @@
-import logging
 from typing import Any
 import time
 import io
 import os
 import sys
 from datetime import datetime
-
+import uuid
 import streamlit as st
 import streamlit_authenticator as stauth
 from dotenv import load_dotenv
@@ -14,7 +13,7 @@ import pandas as pd
 from minio_client import MinioClient
 from streamlit_authenticator import Authenticate
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
-from apps.logger_config import get_logger
+from apps.logger_config import get_logger, correlation_id
 from sqlalchemy import create_engine, text
 
 
@@ -37,7 +36,7 @@ def _current_user() -> str:
 CONTRACTS_DIR = os.path.join(os.path.dirname(__file__), "contracts")
 
 BUCKET_OPTIONS: dict[str, list[str]] = {
-    "sklep": ["test", "cos"],
+    "sklep": ["Site", "Site_Info", "Site_Format", "Site_Address", "Site_Contact"],
     "produkt": ["Chief", "Segment", "Sector", "Department", "Pos_Information", "Contractor", "Product"],
 }
 
@@ -143,11 +142,15 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
 
     if result["valid"]:
         logger.info("Contract validation passed", extra={
+            'class': 'StreamlitApp',
+            'method': 'validate_against_contract',
             "user": _current_user(),
             "valid_records": len(df),
         })
     else:
         logger.warning("Contract validation failed", extra={
+            'class': 'StreamlitApp',
+            'method': 'validate_against_contract',
             "user": _current_user(),
             "missing_cols": result["missing"],
             "extra_cols": result["extra"],
@@ -258,14 +261,33 @@ class StreamlitApp:
                 "error": str(e),
             }, exc_info=True)
             st.error(f"Nie udało się wczytać pliku CSV: {e}")
-            return
+            raise
 
         if contract:
             result = validate_against_contract(df, contract)
 
             if result["valid"]:
+                logger.info("File passed contract validation", extra={
+                    "application": "StreamLit",
+                    "method": "_render_upload_section",
+                    "user": _current_user(),
+                    "file_name": uploaded_file.name,
+                    "file_type": file_type,
+                    "rows": len(df),
+                })
                 st.success("Struktura i typy danych są poprawne.")
             else:
+                logger.warning("File rejected by contract validation", extra={
+                    "application": "StreamLit",
+                    "method": "_render_upload_section",
+                    "user": _current_user(),
+                    "file_name": uploaded_file.name,
+                    "file_type": file_type,
+                    "missing_cols": result["missing"],
+                    "extra_cols": result["extra"],
+                    "nullable_errors": result["nullable_errors"],
+                    "type_errors": result["type_errors"],
+                })
                 errors = []
                 if result["missing"]:
                     errors.append(f"Brakujące kolumny: `{', '.join(result['missing'])}`")
@@ -332,6 +354,14 @@ class StreamlitApp:
                             status='pending',
                             error_message=''
                         )
+                        logger.info("File metadata saved to database", extra={
+                            "application": "StreamLit",
+                            "method": "_render_upload_section",
+                            "user": _current_user(),
+                            "file_name": file.split('/')[-1],
+                            "destination_table": file_type.lower(),
+                            "status": "pending",
+                        })
                     except Exception as e:
                         logger.error("Failed to send file information to database after upload", extra={
                             "user": _current_user(),
@@ -341,6 +371,7 @@ class StreamlitApp:
                             "error_type": type(e).__name__,
                             "error": str(e),
                         }, exc_info=True)
+                        raise
                     time.sleep(2)
                     st.session_state.uploaded_file_key += 1
                     st.rerun()
@@ -353,6 +384,7 @@ class StreamlitApp:
                         "error": str(e),
                     }, exc_info=True)
                     st.error(f"Błąd podczas wysyłania: {e}")
+                    raise
 
     def _show_user_history(self):
         engine=create_engine(os.getenv("DATABASE_URL"))
@@ -403,7 +435,7 @@ class StreamlitApp:
                         margin-bottom:6px;
                         border-left: 4px solid {badge_color};
                     ">
-                        <div style="font-size:13px;font-weight:600;color:#e0e0e0;word-break:break-all">{file_name}</div>                                             
+                        <div style="font-size:13px;font-weight:600;color:#e0e0e0;word-break:break-all">{file_name}</div>
                         <div style="font-size:11px;color:#aaa;margin-top:2px">{date_str}</div>
                         <div style="margin-top:4px">
                             <span style="
@@ -433,7 +465,7 @@ class StreamlitApp:
         else:
             st.sidebar.markdown("---")
             st.sidebar.caption("Nie przesłano jeszcze żadnych plików.")
-        
+
 
 #    id                   SERIAL PRIMARY KEY,
 #     user_id              VARCHAR(100),
@@ -459,9 +491,10 @@ class StreamlitApp:
             engine=create_engine(os.getenv('DATABASE_URL'))
         except Exception as e:
                 logger.error("Database connection failed with send file information from streamlit", extra={
+                    'class': 'StreamlitApp',
+                    'method': '_send_file_information_to_db',
                     "user": _current_user(),
                     'application': 'StreamLit',
-                    'method': '_send_file_information_to_db',
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
@@ -491,15 +524,17 @@ class StreamlitApp:
                 conn.commit()
         except Exception as e:
                 logger.error("Failed to insert file information to database from streamlit", extra={
+                    'class': 'StreamlitApp',
+                    'method': '_send_file_information_to_db',
                     "user": _current_user(),
                     'application': 'StreamLit',
-                    'method': '_send_file_information_to_db',
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
                 raise
 
     def run(self, authenticator: Authenticate):
+        correlation_id.set(str(uuid.uuid4())[:8])
         if st.session_state["authentication_status"]:
             self._render_sidebar(authenticator)
             # self._show_user_history()
