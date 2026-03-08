@@ -27,7 +27,6 @@ class MinioClient:
                 "class": "MinioClient",
                 "method": "upload_file",
             })
-            return f'Successfully uploaded file {file_name} to bucket {bucket_name}'
         except Exception as e:
             logger.error("Error uploading file to MinIO", extra={
                 "file_name": file_name,
@@ -37,7 +36,7 @@ class MinioClient:
                 "error_type": type(e).__name__,
                 "error": str(e),
             }, exc_info=True)
-            return f'Error uploading file {file_name} to bucket {bucket_name} : {e}'
+            raise
     def make_bucket(self,client_name:str,bucket_name:str):
         try:
             self.client.make_bucket(bucket_name)
@@ -46,7 +45,6 @@ class MinioClient:
                 "class": "MinioClient",
                 "method": "make_bucket",
             })
-            return True
         except Exception as e:
             logger.error("Error creating bucket", extra={
                 "bucket": bucket_name,
@@ -55,7 +53,7 @@ class MinioClient:
                 "error_type": type(e).__name__,
                 "error": str(e),
             }, exc_info=True)
-            return False
+            raise
     def bucket_exists(self,bucket_name:str):
         return self.client.bucket_exists(bucket_name)
 # client.bucket_exists('sklep')
