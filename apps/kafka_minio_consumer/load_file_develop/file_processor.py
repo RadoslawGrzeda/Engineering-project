@@ -57,7 +57,7 @@ class ProcessData:
                 except ValidationError as e:
                     errors.append((line_no, row, e.json()))
                 except Exception as e:
-                    logger.error("Error processing row", extra={
+                    logger.error("Error processing row", etra={
                         'class': self.__class__.__name__,
                         'method': "validate_shape",
                         "line_no": line_no,
@@ -95,73 +95,6 @@ class ProcessData:
         df=pd.DataFrame([s.model_dump() for s in records])
         return df, errors
         
-# class ProcessData:
-#     def __init__ (self, path: str):
-#         self.path = path
-#         self.connection_string = os.getenv("postgress_connection")
-#         self.engine = sa.create_engine(self.connection_string)
-    
-
-#     def validate_shape(self, shape: Type[T]):
-#         records: List[T] = []
-#         errors: List[Tuple[int, str]] = []
-#         line_no = 1
-
-#         with open(self.path, 'r', encoding='UTF-8', newline='') as f:
-#             try:
-#                 reader = csv.DictReader(f)
-#                 logger.info("Validating records starting", extra={"file_path": self.path})
-
-#                 for line_no, row in enumerate(reader, start=2):
-#                     try:
-#                         records.append(shape.model_validate(row))
-#                     except ValidationError as e:
-#                         errors.append((line_no, row, e.json()))
-#                     except Exception as e:
-#                         logger.error("Unexpected row error", extra={
-#                             "file_path": self.path,
-#                             "line_no": line_no,
-#                             "row_data": row,
-#                             "error_type": type(e).__name__,
-#                             "error": str(e),
-#                         }, exc_info=True)
-#             except Exception as e:
-#                 logger.error("Failed to read file", extra={
-#                     "file_path": self.path,
-#                     "error_type": type(e).__name__,
-#                     "error": str(e),
-#                 })
-
-#         logger.info("Validation completed", extra={
-#             "file_path": self.path,
-#             "total_rows_read": line_no - 1,
-#             "valid_records": len(records),
-#             "invalid_records": len(errors),
-#         })
-
-#         if errors:
-#             logger.warning("Validation errors found", extra={
-#                 "file_path": self.path,
-#                 "invalid_records": len(errors),
-#             })
-
-#         '''
-#         duplicates = set()
-#         seen = set()
-#         for s in records:
-#             if s.model_dump()[0] in seen:
-#                 duplicates.add(s.model_dump()[0])
-#             else:
-#                 seen.add(s.model_dump()[0])
-
-#         if duplicates:
-#             logger.warning(f"Duplicate segment_id found: {sorted(duplicates)[:20]} (count={len(duplicates)})")
-#         else:
-#             logger.info("No duplicate segment_id found.")
-#         '''
-#         df=pd.DataFrame([s.model_dump() for s in records])
-#         return df, errors
-
 
     def load_to_db(self, df: pd.DataFrame, table_name: str):
         handler_map = {
@@ -393,7 +326,7 @@ class ProcessData:
                         and chief_id != :chief_id
                         and valid_to is null;
 
-                        ''')        
+                        ''')
 
         insert_relation_sql = text(f'''
                                 INSERT INTO segment_chief (segment_id, chief_id, is_current, valid_from, valid_to, source_file)
@@ -963,48 +896,49 @@ class ProcessData:
                 "source_file": source_file,
             })
             raise ValueError("No site records to load: DataFrame is empty")
-        
-        sql = text(f'''
-                    INSERT INTO site (site_unique_code, site_code, created_at, last_modified_at, source_file)
-                    VALUES (:site_unique_code, :site_code, :created_at, :last_modified_at, :source_file)
+
+        sql = text('''
+                    INSERT INTO site (site_unique_code, site_code, site_name, created_at, updated_at, source_file)
+                    VALUES (:site_unique_code, :site_code, :site_name, :created_at, :updated_at, :source_file)
                     ON CONFLICT (site_unique_code) DO UPDATE SET
                         site_code = EXCLUDED.site_code,
-                        last_modified_at = EXCLUDED.last_modified_at,
+                        site_name = EXCLUDED.site_name,
+                        updated_at = EXCLUDED.updated_at,
                         source_file = EXCLUDED.source_file;
                     ''')
         df_site=df.copy()
-        df_site['created_at']=datetime.date.today()
-        df_site['last_modified_at']=datetime.date.today()
+        df_site['created_at']=datetime.datetime.now()
+        df_site['updated_at']=datetime.datetime.now()
         df_site['source_file']=source_file
         records=df_site.to_dict(orient='records')
-        
-        try:
-            logger.info("Inserting records", extra={
-                'class': self.__class__.__name__,
-                'method': "_load_site",
-                "table": "site",
-                "records_count": len(records),
-                "source_file": source_file,
-            })
-            with self.engine.begin() as conn:
+
+        with self.engine.begin() as conn:
+            try:
+                logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site",
+                    "table": "site",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
                 conn.execute(sql, records)
-            logger.info("Records inserted successfully", extra={
-                'class': self.__class__.__name__,
-                'method': "_load_site",
-                "table": "site",
-                "records_count": len(records),
-            })
-            return len(records)
-        except Exception as e:
-            logger.error("DB insert failed", extra={
-                'class': self.__class__.__name__,
-                'method': "_load_site",
-                "table": "site",
-                "source_file": source_file,
-                "error_type": type(e).__name__,
-                "error": str(e),
-            }, exc_info=True)
-            raise
+                logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site",
+                    "table": "site",
+                    "records_count": len(records),
+                })
+                return len(records)
+            except Exception as e:
+                logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site",
+                    "table": "site",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
     
     def _get_existing_site_codes(self) -> set[str]:
         try:
@@ -1020,10 +954,8 @@ class ProcessData:
             }, exc_info=True)
             raise
 
-
-    def _load_site_info(self, df: pd.DataFrame) -> None:
-        # Implementacja podobna do _load_site, z uwzględnieniem specyfiki tabeli site_info
-        source_file=self.path
+    def _load_site_info(self, df: pd.DataFrame) -> int:
+        source_file = self.path
         if df.empty:
             logger.warning("Data frame is empty", extra={
                 'class': self.__class__.__name__,
@@ -1031,41 +963,387 @@ class ProcessData:
                 "table": "site_info",
                 "source_file": source_file,
             })
-            raise ValueError("No site records to load: DataFrame is empty")
-        pass
-# class SiteInfo(BaseModel):
-#     site_id: str = Field(...)
-#     site_status_code: str = Field(...)
-#     site_opening_date: Optional[date] = Field(None)
-#     site_closing_date: Optional[date] = Field(None)
-#     is_current: Optional[bool] = Field(None)
-#     valid_from: Optional[date] = Field(None)
-#     valid_to: Optional[date] = Field(None)
+            raise ValueError("No site_info records to load: DataFrame is empty")
 
-# class SiteFormat(BaseModel):
-#     site_id: str = Field(...)
-#     site_format_unique_code: str = Field(...)
-#     is_current: Optional[bool] = Field(None)
-#     start_date: Optional[date] = Field(None)
-#     valid_to: Optional[date] = Field(None)
+        existing_site_codes = self._get_existing_site_codes()
+        df_work = df.copy()
 
+        invalid = df_work[~df_work['site_unique_code'].isin(existing_site_codes)].copy()
+        valid = df_work[df_work['site_unique_code'].isin(existing_site_codes)].copy()
 
-# class SiteContact(BaseModel):
-#     site_id: str = Field(...)
-#     contact_type: str = Field(...)
-#     contact_value: str = Field(...)
-#     contact_role: str = Field(...)
-#     valid_from: Optional[date] = Field(None)
-#     valid_to: Optional[date] = Field(None)
-#     is_primary: Optional[bool] = Field(None)
+        if not invalid.empty:
+            logger.warning("Rows skipped due to missing site_unique_code in site table", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_info",
+                "table": "site_info",
+                "skipped_count": len(invalid),
+                "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
+                "source_file": source_file,
+            })
 
-# class SiteAddress(BaseModel):
-#     site_id: str = Field(...)
-#     site_address_zip_code: str = Field(...)
-#     site_address_city: str = Field(..., min_length=1, max_length=100)
-#     site_address_complement: str = Field(..., min_length=1, max_length=255)
-#     city_code: str = Field(..., min_length=2, max_length=10)
-#     country_code: str = Field(..., min_length=2, max_length=5)
-#     site_geo_coordinate_x_value: Optional[float] = Field(None)
-#     site_geo_coordinate_y_value: Optional[float] = Field(None)
-#     is_current: Optional[bool] = Field(None)
+        if valid.empty:
+            logger.warning("No valid site_info records to insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_info",
+                "table": "site_info",
+                "source_file": source_file,
+            })
+            return 0
+
+        update_sql = text('''
+            UPDATE site_info
+            SET is_current = False,
+                valid_to = current_date
+            WHERE site_unique_code = :site_unique_code
+              AND is_current = True
+              AND valid_to IS NULL;
+        ''')
+
+        insert_sql = text('''
+            INSERT INTO site_info (site_unique_code, site_status_code, site_opening_date, site_closing_date,
+                                   is_current, valid_from, valid_to, source_file)
+            VALUES (:site_unique_code, :site_status_code, :site_opening_date, :site_closing_date,
+                    :is_current, :valid_from, :valid_to, :source_file)
+        ''')
+
+        valid['valid_from'] = valid['valid_from'] if 'valid_from' in valid.columns and valid['valid_from'].notna().any() else datetime.date.today()
+        valid['valid_to'] = None
+        valid['site_closing_date'] = valid['site_closing_date'] if 'site_closing_date' in valid.columns and valid[['site_status_code']=='ACTIVE'] else None
+        valid['is_current'] = True
+        valid['source_file'] = source_file
+        records = valid[['site_unique_code', 'site_status_code', 'site_opening_date', 'site_closing_date',
+                         'is_current', 'valid_from', 'valid_to', 'source_file']].to_dict(orient='records')
+
+        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
+        with self.engine.begin() as conn:
+            try:
+                if update_records:
+                    logger.info("Closing outdated site_info records", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_info",
+                        "table": "site_info",
+                        "records_count": len(update_records),
+                        "source_file": source_file,
+                    })
+                    conn.execute(update_sql, update_records)
+
+                logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_info",
+                    "table": "site_info",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
+                conn.execute(insert_sql, records)
+                logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_info",
+                    "table": "site_info",
+                    "records_count": len(records),
+                })
+                return len(records)
+            except Exception as e:
+                logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_info",
+                    "table": "site_info",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
+
+    def _load_site_format(self, df: pd.DataFrame) -> int:
+        source_file = self.path
+
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_format",
+                "table": "site_format",
+                "source_file": source_file,
+            })
+            raise ValueError("No site_format records to load: DataFrame is empty")
+
+        existing_site_codes = self._get_existing_site_codes()
+        df_work = df.copy()
+
+        invalid = df_work[~df_work['site_unique_code'].isin(existing_site_codes)].copy()
+        valid = df_work[df_work['site_unique_code'].isin(existing_site_codes)].copy()
+
+        if not invalid.empty:
+            logger.warning("Rows skipped due to missing site_unique_code in site table", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_format",
+                "table": "site_format",
+                "skipped_count": len(invalid),
+                "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
+                "source_file": source_file,
+            })
+
+        if valid.empty:
+            logger.warning("No valid site_format records to insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_format",
+                "table": "site_format",
+                "source_file": source_file,
+            })
+            return 0
+
+        update_sql = text('''
+            UPDATE site_format
+            SET is_current = False,
+                valid_to = current_date
+            WHERE site_unique_code = :site_unique_code
+              AND is_current = True
+              AND valid_to IS NULL;
+        ''')
+
+        insert_sql = text('''
+            INSERT INTO site_format (site_unique_code, site_format_unique_code, is_current, start_date, valid_to, source_file)
+            VALUES (:site_unique_code, :site_format_unique_code, :is_current, :start_date, :valid_to, :source_file)
+        ''')
+
+        valid['start_date'] = valid['start_date'] if 'start_date' in valid.columns and valid['start_date'].notna().any() else datetime.date.today()
+        valid['valid_to'] = None
+        valid['is_current'] = True
+        valid['source_file'] = source_file
+        records = valid[['site_unique_code', 'site_format_unique_code', 'is_current', 'start_date',
+                         'valid_to', 'source_file']].to_dict(orient='records')
+
+        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
+        with self.engine.begin() as conn:
+            try:
+                if update_records:
+                    logger.info("Closing outdated site_format records", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_format",
+                        "table": "site_format",
+                        "records_count": len(update_records),
+                        "source_file": source_file,
+                    })
+                    conn.execute(update_sql, update_records)
+
+                logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_format",
+                    "table": "site_format",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
+                conn.execute(insert_sql, records)
+                logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_format",
+                    "table": "site_format",
+                    "records_count": len(records),
+                })
+                return len(records)
+            except Exception as e:
+                logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_format",
+                    "table": "site_format",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
+
+    def _load_site_address(self, df: pd.DataFrame) -> int:
+        source_file = self.path
+
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_address",
+                "table": "site_address",
+                "source_file": source_file,
+            })
+            raise ValueError("No site_address records to load: DataFrame is empty")
+
+        existing_site_codes = self._get_existing_site_codes()
+        df_work = df.copy()
+
+        invalid = df_work[~df_work['site_unique_code'].isin(existing_site_codes)].copy()
+        valid = df_work[df_work['site_unique_code'].isin(existing_site_codes)].copy()
+
+        if not invalid.empty:
+            logger.warning("Rows skipped due to missing site_unique_code in site table", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_address",
+                "table": "site_address",
+                "skipped_count": len(invalid),
+                "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
+                "source_file": source_file,
+            })
+
+        if valid.empty:
+            logger.warning("No valid site_address records to insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_address",
+                "table": "site_address",
+                "source_file": source_file,
+            })
+            return 0
+
+        update_sql = text('''
+            UPDATE site_address
+            SET is_current = False
+            WHERE site_unique_code = :site_unique_code
+              AND is_current = True;
+        ''')
+
+        insert_sql = text('''
+            INSERT INTO site_address (site_unique_code, site_address_zip_code, site_address_city, site_address_complement,
+                                      city_code, country_code, site_geo_coordinate_x_value, site_geo_coordinate_y_value,
+                                      is_current, source_file)
+            VALUES (:site_unique_code, :site_address_zip_code, :site_address_city, :site_address_complement,
+                    :city_code, :country_code, :site_geo_coordinate_x_value, :site_geo_coordinate_y_value,
+                    :is_current, :source_file)
+        ''')
+
+        valid['is_current'] = True
+        valid['source_file'] = source_file
+        records = valid[['site_unique_code', 'site_address_zip_code', 'site_address_city', 'site_address_complement',
+                         'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value',
+                         'is_current', 'source_file']].to_dict(orient='records')
+
+        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
+        with self.engine.begin() as conn:
+            try:
+                if update_records:
+                    logger.info("Closing outdated site_address records", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_address",
+                        "table": "site_address",
+                        "records_count": len(update_records),
+                        "source_file": source_file,
+                    })
+                    conn.execute(update_sql, update_records)
+
+                logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_address",
+                    "table": "site_address",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
+                conn.execute(insert_sql, records)
+                logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_address",
+                    "table": "site_address",
+                    "records_count": len(records),
+                })
+                return len(records)
+            except Exception as e:
+                logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_address",
+                    "table": "site_address",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
+
+    def _load_site_contact(self, df: pd.DataFrame) -> int:
+        source_file = self.path
+
+        if df.empty:
+            logger.warning("Data frame is empty", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_contact",
+                "table": "site_contact",
+                "source_file": source_file,
+            })
+            raise ValueError("No site_contact records to load: DataFrame is empty")
+
+        existing_site_codes = self._get_existing_site_codes()
+        df_work = df.copy()
+
+        invalid = df_work[~df_work['site_unique_code'].isin(existing_site_codes)].copy()
+        valid = df_work[df_work['site_unique_code'].isin(existing_site_codes)].copy()
+
+        if not invalid.empty:
+            logger.warning("Rows skipped due to missing site_unique_code in site table", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_contact",
+                "table": "site_contact",
+                "skipped_count": len(invalid),
+                "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
+                "source_file": source_file,
+            })
+
+        if valid.empty:
+            logger.warning("No valid site_contact records to insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_contact",
+                "table": "site_contact",
+                "source_file": source_file,
+            })
+            return 0
+
+        update_sql = text('''
+            UPDATE site_contact
+            SET valid_to = current_date
+            WHERE site_unique_code = :site_unique_code
+              AND valid_to IS NULL;
+        ''')
+
+        insert_sql = text('''
+            INSERT INTO site_contact (site_unique_code, contact_type, contact_value, contact_role,
+                                      valid_from, valid_to, is_primary, source_file)
+            VALUES (:site_unique_code, :contact_type, :contact_value, :contact_role,
+                    :valid_from, :valid_to, :is_primary, :source_file)
+        ''')
+
+        valid['valid_from'] = valid['valid_from'] if 'valid_from' in valid.columns and valid['valid_from'].notna().any() else datetime.date.today()
+        valid['valid_to'] = None
+        valid['source_file'] = source_file
+        records = valid[['site_unique_code', 'contact_type', 'contact_value', 'contact_role',
+                         'valid_from', 'valid_to', 'is_primary', 'source_file']].to_dict(orient='records')
+
+        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
+        with self.engine.begin() as conn:
+            try:
+                if update_records:
+                    logger.info("Closing outdated site_contact records", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_contact",
+                        "table": "site_contact",
+                        "records_count": len(update_records),
+                        "source_file": source_file,
+                    })
+                    conn.execute(update_sql, update_records)
+
+                logger.info("Inserting records", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_contact",
+                    "table": "site_contact",
+                    "records_count": len(records),
+                    "source_file": source_file,
+                })
+                conn.execute(insert_sql, records)
+                logger.info("Records inserted successfully", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_contact",
+                    "table": "site_contact",
+                    "records_count": len(records),
+                })
+                return len(records)
+            except Exception as e:
+                logger.error("DB insert failed", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_contact",
+                    "table": "site_contact",
+                    "source_file": source_file,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
