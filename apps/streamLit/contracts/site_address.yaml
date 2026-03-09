@@ -1,0 +1,40 @@
+table: site_address
+description: "Adresy sklepow z koordynatami geograficznymi."
+
+sla:
+  freshness: when_file_arrives
+  owner: procurement-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: true
+  notify:
+    - procurement-team
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: site_unique_code
+    type: string
+    nullable: false
+  - name: site_address_zip_code
+    type: string
+    nullable: false
+  - name: site_address_city
+    type: string
+    nullable: false
+  - name: site_address_complement
+    type: string
+    nullable: false
+  - name: city_code
+    type: string
+    nullable: false
+  - name: country_code
+    type: string
+    nullable: false
+  - name: site_geo_coordinate_x_value
+    type: float
+    nullable: true
+  - name: site_geo_coordinate_y_value
+    type: float
+    nullable: true
