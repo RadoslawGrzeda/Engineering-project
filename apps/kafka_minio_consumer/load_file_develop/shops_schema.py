@@ -19,7 +19,7 @@ class Site(BaseModel):
 
 
 class SiteInfo(BaseModel):
-    site_id: str = Field(...)
+    site_unique_code: str = Field(...)
     site_status_code: str = Field(...)
     site_opening_date: Optional[date] = Field(None)
     site_closing_date: Optional[date] = Field(None)
@@ -40,9 +40,15 @@ class SiteInfo(BaseModel):
                 return False
         return v
 
+    @field_validator('site_unique_code')
+    @classmethod
+    def validate_site_unique_code(cls, v):
+        if not re.match(r'^PL[0-9]{3}$', v):
+            raise ValueError(f"Invalid site unique code format: {v}")
+        return v
 
 class SiteFormat(BaseModel):
-    site_id: str = Field(...)
+    site_unique_code: str = Field(...)
     site_format_unique_code: str = Field(...)
     is_current: Optional[bool] = Field(None)
     start_date: Optional[date] = Field(None)
@@ -53,6 +59,13 @@ class SiteFormat(BaseModel):
     def validate_site_format_unique_code(cls, v):
         if v not in ('HYPER', 'SUPER'):
             raise ValueError(f"Invalid site format unique code: {v}")
+        return v
+
+    @field_validator('site_unique_code')
+    @classmethod
+    def validate_site_unique_code(cls, v):
+        if not re.match(r'^PL[0-9]{3}$', v):
+            raise ValueError(f"Invalid site unique code format: {v}")
         return v
 
     @field_validator('is_current', mode='before')
@@ -70,13 +83,20 @@ class SiteFormat(BaseModel):
 
 
 class SiteContact(BaseModel):
-    site_id: str = Field(...)
+    site_unique_code: str = Field(...)
     contact_type: str = Field(...)
     contact_value: str = Field(...)
     contact_role: str = Field(...)
     valid_from: Optional[date] = Field(None)
     valid_to: Optional[date] = Field(None)
     is_primary: Optional[bool] = Field(None)
+
+    @field_validator('site_unique_code')
+    @classmethod
+    def validate_site_unique_code(cls, v):
+        if not re.match(r'^PL[0-9]{3}$', v):
+            raise ValueError(f"Invalid site unique code format: {v}")
+        return v
 
     @field_validator('is_primary', mode='before')
     @classmethod
@@ -92,7 +112,7 @@ class SiteContact(BaseModel):
         return v
 
 class SiteAddress(BaseModel):
-    site_id: str = Field(...)
+    site_unique_code: str = Field(...)
     site_address_zip_code: str = Field(...)
     site_address_city: str = Field(..., min_length=1, max_length=100)
     site_address_complement: str = Field(..., min_length=1, max_length=255)
@@ -101,6 +121,13 @@ class SiteAddress(BaseModel):
     site_geo_coordinate_x_value: Optional[float] = Field(None)
     site_geo_coordinate_y_value: Optional[float] = Field(None)
     is_current: Optional[bool] = Field(None)
+
+    @field_validator('site_unique_code')
+    @classmethod
+    def validate_site_unique_code(cls, v):
+        if not re.match(r'^PL[0-9]{3}$', v):
+            raise ValueError(f"Invalid site unique code format: {v}")
+        return v
 
     @field_validator('site_address_zip_code')
     @classmethod
