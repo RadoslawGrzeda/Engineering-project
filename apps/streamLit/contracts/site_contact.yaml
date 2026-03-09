@@ -1,0 +1,37 @@
+table: site_contact
+description: "Dane kontaktowe sklepow z przypisaniem roli i typu kontaktu."
+
+sla:
+  freshness: when_file_arrives
+  owner: procurement-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: true
+  notify:
+    - procurement-team
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: site_unique_code
+    type: string
+    nullable: false
+  - name: contact_type
+    type: string
+    nullable: false
+  - name: contact_value
+    type: string
+    nullable: false
+  - name: contact_role
+    type: string
+    nullable: false
+  - name: valid_from
+    type: date
+    nullable: true
+  - name: valid_to
+    type: date
+    nullable: true
+  - name: is_primary
+    type: boolean
+    nullable: true

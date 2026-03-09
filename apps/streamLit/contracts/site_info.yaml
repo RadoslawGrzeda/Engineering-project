@@ -1,0 +1,28 @@
+table: site_info
+description: "Informacje o statusie i datach otwarcia/zamknięcia sklepów."
+
+sla:
+  freshness: when_file_arrives
+  owner: procurement-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: true
+  notify:
+    - procurement-team
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: site_unique_code
+    type: string
+    nullable: false
+  - name: site_status_code
+    type: string
+    nullable: false
+  - name: site_opening_date
+    type: date
+    nullable: true
+  - name: site_closing_date
+    type: date
+    nullable: true
