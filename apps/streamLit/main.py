@@ -122,10 +122,12 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
         "type_errors": [],
     }
 
-    contract_cols = {col["name"] for col in contract["columns"]}
+    required_cols = {col["name"] for col in contract["columns"] if not col.get("nullable", True)}
+    all_contract_cols = {col["name"] for col in contract["columns"]}
     df_cols = set(df.columns)
-    result["missing"] = sorted(contract_cols - df_cols)
-    result["extra"] = sorted(df_cols - contract_cols)
+
+    result["missing"] = sorted(required_cols - df_cols)
+    result["extra"] = sorted(df_cols - all_contract_cols)
 
     if result["missing"] or result["extra"]:
         result["valid"] = False
@@ -135,6 +137,9 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
         col_name = col_def["name"]
         col_type = col_def.get("type", "string")
         nullable = col_def.get("nullable", True)
+
+        if col_name not in df.columns:
+            continue
 
         if not nullable and df[col_name].isnull().any():
             result["nullable_errors"].append(col_name)
