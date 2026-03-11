@@ -39,10 +39,10 @@ class KafkaMinioConsumer:
                                     max_partition_fetch_bytes=1048576,                        
                                     )
         except Exception as e:
-            self.logger.error("Error creating Kafka consumer: %s", e, extra={'class': self.__class__.__name__, 'method': "__init__", 'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic})
+            self.logger.error("Error creating Kafka consumer: %s", e, extra={'class':'KafkaMinioConsumer', 'method': "__init__", 'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic})
             raise
         self.consumer.subscribe([self.topic])
-        self.logger.info("Kafka consumer created successfully and subscribed to topic '%s'", self.topic, extra={'class': self.__class__.__name__, 'method': "__init__", 'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic} )
+        self.logger.info("Kafka consumer created successfully and subscribed to topic '%s'", self.topic, extra={'class': 'KafkaMinioConsumer', 'method': "__init__", 'bootstrap_servers': self.bootstrap_servers, 'group_id': self.group_id, 'topic': self.topic} )
 
         try:
             self.minio=Minio (
@@ -58,7 +58,7 @@ class KafkaMinioConsumer:
                 'method': "__init__",
                 'minio_address': os.getenv('MINIO_ADDRESS')})
             raise
-        self.logger.info("Minio client created successfully", extra={'class': self.__class__.__name__, 'method': "__init__", 'minio_address': os.getenv('MINIO_ADDRESS')})
+        self.logger.info("Minio client created successfully", extra={'class': 'KafkaMinioConsumer', 'method': "__init__", 'minio_address': os.getenv('MINIO_ADDRESS')})
     # def _send_post_request(self, bucket_name, file_key, schema):
     #     try:
     #         response = requests.post(
@@ -86,7 +86,7 @@ class KafkaMinioConsumer:
                             file_key.split('/')[-1],
                             bucket_name,
                             extra={
-                                'class': self.__class__.__name__,
+                                'class': 'KafkaMinioConsumer',
                                 'method': "_load_file_from_minio",
                                 'file_key': file_key,
                                 'bucket_name': bucket_name
@@ -94,7 +94,7 @@ class KafkaMinioConsumer:
             return df
         except Exception as e:
             self.logger.error("Error loading file from Minio: %s", e, extra={
-                'class': self.__class__.__name__,
+                'class': 'KafkaMinioConsumer',
                 'method': "_load_file_from_minio",
                 'file_key': file_key,
                 'bucket_name': bucket_name
@@ -130,7 +130,7 @@ class KafkaMinioConsumer:
                     connection.commit()
                 except Exception as e:
                     self.logger.error("Error updating file status in database: %s", e, extra={
-                        'class': self.__class__.__name__,
+                        'class': 'KafkaMinioConsumer',
                         'method': "_change_file_status_in_db",
                         'file_name': file_name,
                         'destination_table': destination_table,
@@ -163,7 +163,7 @@ class KafkaMinioConsumer:
                 # self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
                 raise
         except Exception as e:
-            self.logger.error("Error processing data: %s", e, extra={'class': self.__class__.__name__, 'method': "_validate_and_load_to_db", 'schema': schema, 'file_key': file_key}, exc_info=True)
+            self.logger.error("Error processing data: %s", e, extra={'class': 'KafkaMinioConsumer', 'method': "_validate_and_load_to_db", 'schema': schema, 'file_key': file_key}, exc_info=True)
             raise
 
             
@@ -181,14 +181,15 @@ class KafkaMinioConsumer:
                             file_key = unquote(raw_name)
                             file_name=file_key.split('/')[-1]
                             schema=file_key.split("/")[0]
-                            self.logger.info("Received event for file '%s' in bucket '%s'", file_name, bucket_name, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
+                            self.logger.info("Received event for file '%s' in bucket '%s'", file_name, bucket_name,
+                                             extra={'class': 'KafkaMinioConsumer','method':'consume_message', 'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
                             df=self._load_file_from_minio(bucket_name, file_key)
                             self._validate_and_load_to_db(df, schema, file_key)
                             self.consumer.commit()
                             # self._send_post_request(bucket_name,schema, file_key)
                 except Exception as e:
                     self.logger.error("Error processing message from kafka: %s", e, extra={
-                        'class': self.__class__.__name__,
+                        'class': 'KafkaMinioConsumer',
                         'method': "consume_messages",
                         'file_key': file_key,
                         'bucket_name': bucket_name,

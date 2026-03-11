@@ -55,18 +55,23 @@ FRESHNESS_LABELS: dict[str, str] = {
 
 def load_contract(file_type: str) -> dict[str, Any] | None:
     file_type = file_type.lower()
-    path = os.path.join(CONTRACTS_DIR, f"{file_type}.yaml")
-    if not os.path.exists(path):
+    for ext in (".yaml", ".yml"):
+        path = os.path.join(CONTRACTS_DIR, f"{file_type}{ext}")
+        if os.path.exists(path):
+            break
+    else:
         logger.warning("Contract not found", extra={
             "user": _current_user(),
             "file_type": file_type,
-            "path": path,
+            "path": CONTRACTS_DIR,
         })
         return None
     try:
         with open(path, "r", encoding="utf-8") as f:
             contract = safe_load(f)
         logger.info("Contract loaded", extra={
+            "class": "StreamlitApp",
+            "method": "load_contract",
             "user": _current_user(),
             "file_type": file_type,
             "path": path,
@@ -253,7 +258,7 @@ class StreamlitApp:
             uploaded_file.seek(0)
         except Exception as e:
             logger.error("Failed to read CSV file", extra={
-                "application": 'StreamLit',
+                "class": 'StreamLitApp',
                 "method": '_render_upload_section',
                 "user": _current_user(),
                 "file_name": uploaded_file.name,
@@ -267,18 +272,18 @@ class StreamlitApp:
             result = validate_against_contract(df, contract)
 
             if result["valid"]:
-                logger.info("File passed contract validation", extra={
-                    "application": "StreamLit",
-                    "method": "_render_upload_section",
-                    "user": _current_user(),
-                    "file_name": uploaded_file.name,
-                    "file_type": file_type,
-                    "rows": len(df),
-                })
+                # logger.info("File passed contract validation", extra={
+                #     "class": "StreamLitApp",
+                #     "method": "_render_upload_section",
+                #     "user": _current_user(),
+                #     "file_name": uploaded_file.name,
+                #     "file_type": file_type,
+                #     "rows": len(df),
+                # })
                 st.success("Struktura i typy danych są poprawne.")
             else:
                 logger.warning("File rejected by contract validation", extra={
-                    "application": "StreamLit",
+                    "class": "StreamLitApp",
                     "method": "_render_upload_section",
                     "user": _current_user(),
                     "file_name": uploaded_file.name,
@@ -336,6 +341,8 @@ class StreamlitApp:
                         content_type="application/csv",
                     )
                     logger.info("File uploaded", extra={
+                        'class': 'StreamLitApp',
+                        'method': '_upload_file',
                         "user": _current_user(),
                         "uploaded_file": file.split('/')[-1],
                         "bucket": bucket,
@@ -388,8 +395,13 @@ class StreamlitApp:
 
     def _show_user_history(self):
         engine=create_engine(os.getenv("DATABASE_URL"))
-        query =text("""SELECT file_name, processed_at, status FROM etl_load_log_product WHERE user_name = :user_name ORDER BY
-            processed_at DESC""")
+        query = text("""
+            SELECT file_name, processed_at, status, destination_table,
+                   inserted_rows_count, rejected_rows_count, number_of_rows, error_message
+            FROM etl_load_log_product
+            WHERE user_name = :user_name
+            ORDER BY processed_at DESC
+        """)
         try:
             with engine.connect() as conn:
                     result = conn.execute(query, {"user_name": _current_user()})
@@ -406,10 +418,15 @@ class StreamlitApp:
             st.error(f"Nie można pobrać historii przesłanych plików: {e}")
             return []
 
-        if history:
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("📂 Historia plików")
+        st.sidebar.markdown("---")
+        col_title, col_refresh = st.sidebar.columns([3, 1])
+        with col_title:
+            st.subheader("Historia plików")
+        with col_refresh:
+            if st.button("Odswież", key="hist_refresh"):
+                st.rerun()
 
+        if history:
             PAGE_SIZE = 5
             total_pages = max(1, (len(history) + PAGE_SIZE - 1) // PAGE_SIZE)
 
@@ -419,14 +436,42 @@ class StreamlitApp:
             page = st.session_state["history_page"]
             page_items = history[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
 
-            for file_name, processed_at, status in page_items:
-                if status == "success":
-                    badge_color, label = "#28a745", "Sukces"
-                elif status == "error":
-                    badge_color, label = "#dc3545", "Błąd"
-                else:
-                    badge_color, label = "#ffc107", status or "Nieznany"
+            STATUS_CONFIG = {
+                "success": ("#28a745", "Sukces"),
+                "error": ("#dc3545", "Blad"),
+                "partial_success": ("#fd7e14", "Czesciowy sukces"),
+                "pending": ("#ffc107", "Oczekuje"),
+            }
+
+            for row in page_items:
+                file_name, processed_at, status, dest_table, inserted, rejected, total_rows, error_msg = row
+                badge_color, label = STATUS_CONFIG.get(status, ("#ffc107", status or "Nieznany"))
                 date_str = processed_at.strftime("%Y-%m-%d %H:%M") if processed_at else "—"
+
+                detail_lines = []
+                if dest_table:
+                    detail_lines.append(f"Tabela: <b>{dest_table}</b>")
+                if total_rows:
+                    detail_lines.append(f"Wierszy: {total_rows}")
+                if status == "success" and inserted:
+                    detail_lines.append(f"Wstawiono: {inserted}")
+                elif status == "partial_success":
+                    parts = []
+                    if inserted:
+                        parts.append(f"wstawiono: {inserted}")
+                    if rejected:
+                        parts.append(f"odrzucono: {rejected}")
+                    if parts:
+                        detail_lines.append(" | ".join(parts))
+                    if error_msg:
+                        short_err = (error_msg[:120] + "...") if len(error_msg) > 120 else error_msg
+                        detail_lines.append(f"<span style='color:#ff6b6b'>{short_err}</span>")
+                elif status == "error" and error_msg:
+                    short_err = (error_msg[:120] + "...") if len(error_msg) > 120 else error_msg
+                    detail_lines.append(f"<span style='color:#ff6b6b'>{short_err}</span>")
+
+                details_html = "<br>".join(detail_lines) if detail_lines else ""
+
                 st.sidebar.markdown(
                     f"""<div style="
                         background:#1e1e2e;
@@ -437,6 +482,7 @@ class StreamlitApp:
                     ">
                         <div style="font-size:13px;font-weight:600;color:#e0e0e0;word-break:break-all">{file_name}</div>
                         <div style="font-size:11px;color:#aaa;margin-top:2px">{date_str}</div>
+                        {f'<div style="font-size:11px;color:#ccc;margin-top:4px">{details_html}</div>' if details_html else ''}
                         <div style="margin-top:4px">
                             <span style="
                                 background:{badge_color};
@@ -463,8 +509,7 @@ class StreamlitApp:
                     st.session_state["history_page"] += 1
                     st.rerun()
         else:
-            st.sidebar.markdown("---")
-            st.sidebar.caption("Nie przesłano jeszcze żadnych plików.")
+            st.sidebar.caption("Nie przeslano jeszcze zadnych plikow.")
 
 
 #    id                   SERIAL PRIMARY KEY,
