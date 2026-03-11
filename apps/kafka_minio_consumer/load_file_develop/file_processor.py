@@ -990,13 +990,39 @@ class ProcessData:
             })
             return 0
 
+        check_sql = text('''
+            SELECT site_unique_code, site_status_code
+            FROM site_info
+            WHERE site_unique_code = ANY(:codes)
+              AND is_current = True;
+        ''')
+
+        codes = valid['site_unique_code'].unique().tolist()
+        with self.engine.connect() as conn:
+            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+        current_status = {row[0]: row[1] for row in existing}
+
+        changed_mask = valid['site_unique_code'].apply(
+            lambda code: current_status.get(code) != valid.loc[valid['site_unique_code'] == code, 'site_status_code'].iloc[0]
+        )
+        new_mask = ~valid['site_unique_code'].isin(current_status.keys())
+        valid = valid[changed_mask | new_mask].copy()
+
+        if valid.empty:
+            logger.info("No status changes detected, skipping insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_info",
+                "table": "site_info",
+                "source_file": source_file,
+            })
+            return 0
+
         update_sql = text('''
             UPDATE site_info
             SET is_current = False,
                 valid_to = current_date
             WHERE site_unique_code = :site_unique_code
-              AND is_current = True
-              AND valid_to IS NULL;
+              AND is_current = True;
         ''')
 
         insert_sql = text('''
@@ -1006,9 +1032,26 @@ class ProcessData:
                     :is_current, :valid_from, :valid_to, :source_file)
         ''')
 
-        valid['valid_from'] = valid['valid_from'] if 'valid_from' in valid.columns and valid['valid_from'].notna().any() else datetime.date.today()
+        if 'valid_from' in valid.columns and valid['valid_from'].notna().any():
+            pass
+        else:
+            valid['valid_from'] = datetime.date.today()
+
+        is_active = valid['site_status_code'] == "ACTIVE"
+
+        if 'site_opening_date' in valid.columns and valid['site_opening_date'].notna().any():
+            valid['site_opening_date'] = valid['site_opening_date']
+        else:
+            valid['site_opening_date'] = datetime.date.today()
+
         valid['valid_to'] = None
-        valid['site_closing_date'] = valid['site_closing_date'] if 'site_closing_date' in valid.columns and valid[['site_status_code']=='ACTIVE'] else None
+        valid.loc[~is_active, 'valid_to'] = datetime.date.today()
+
+        if 'site_closing_date' not in valid.columns:
+            valid['site_closing_date'] = None
+        valid.loc[is_active, 'site_closing_date'] = None
+        valid.loc[~is_active, 'site_closing_date'] = valid.loc[~is_active, 'site_closing_date'].fillna(datetime.date.today())
+
         valid['is_current'] = True
         valid['source_file'] = source_file
         records = valid[['site_unique_code', 'site_status_code', 'site_opening_date', 'site_closing_date',
