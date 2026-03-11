@@ -1134,25 +1134,52 @@ class ProcessData:
             })
             return 0
 
+        check_sql = text('''
+            SELECT site_unique_code, site_format_unique_code
+            FROM site_format
+            WHERE site_unique_code = ANY(:codes)
+              AND is_current = True;
+        ''')
+
+        codes = valid['site_unique_code'].unique().tolist()
+        with self.engine.connect() as conn:
+            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+        current_data = {row[0]: row[1] for row in existing}
+
+        changed_mask = valid.apply(
+            lambda r: current_data.get(r['site_unique_code']) != r['site_format_unique_code'], axis=1
+        )
+        new_mask = ~valid['site_unique_code'].isin(current_data.keys())
+        valid = valid[changed_mask | new_mask].copy()
+
+        if valid.empty:
+            logger.info("No format changes detected, skipping insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_format",
+                "table": "site_format",
+                "source_file": source_file,
+            })
+            return 0
+
         update_sql = text('''
             UPDATE site_format
             SET is_current = False,
                 valid_to = current_date
             WHERE site_unique_code = :site_unique_code
-              AND is_current = True
-              AND valid_to IS NULL;
+              AND is_current = True;
         ''')
 
         insert_sql = text('''
-            INSERT INTO site_format (site_unique_code, site_format_unique_code, is_current, start_date, valid_to, source_file)
-            VALUES (:site_unique_code, :site_format_unique_code, :is_current, :start_date, :valid_to, :source_file)
+            INSERT INTO site_format (site_unique_code, site_format_unique_code, is_current, valid_from, valid_to, source_file)
+            VALUES (:site_unique_code, :site_format_unique_code, :is_current, :valid_from, :valid_to, :source_file)
         ''')
 
-        valid['start_date'] = valid['start_date'] if 'start_date' in valid.columns and valid['start_date'].notna().any() else datetime.date.today()
+        if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
+            valid['valid_from'] = datetime.date.today()
         valid['valid_to'] = None
         valid['is_current'] = True
         valid['source_file'] = source_file
-        records = valid[['site_unique_code', 'site_format_unique_code', 'is_current', 'start_date',
+        records = valid[['site_unique_code', 'site_format_unique_code', 'is_current', 'valid_from',
                          'valid_to', 'source_file']].to_dict(orient='records')
 
         update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
@@ -1232,6 +1259,48 @@ class ProcessData:
             })
             return 0
 
+        check_sql = text('''
+            SELECT site_unique_code, site_address_zip_code, site_address_city, site_address_complement,
+                   city_code, country_code, site_geo_coordinate_x_value, site_geo_coordinate_y_value
+            FROM site_address
+            WHERE site_unique_code = ANY(:codes)
+              AND is_current = True;
+        ''')
+
+        codes = valid['site_unique_code'].unique().tolist()
+        with self.engine.connect() as conn:
+            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+        current_data = {
+            row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]),
+                     str(row[5]), str(row[6]), str(row[7]))
+            for row in existing
+        }
+
+        def _address_changed(r):
+            key = r['site_unique_code']
+            if key not in current_data:
+                return True
+            return current_data[key] != (
+                str(r.get('site_address_zip_code', '')),
+                str(r.get('site_address_city', '')),
+                str(r.get('site_address_complement', '')),
+                str(r.get('city_code', '')),
+                str(r.get('country_code', '')),
+                str(r.get('site_geo_coordinate_x_value', '')),
+                str(r.get('site_geo_coordinate_y_value', '')),
+            )
+
+        valid = valid[valid.apply(_address_changed, axis=1)].copy()
+
+        if valid.empty:
+            logger.info("No address changes detected, skipping insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_address",
+                "table": "site_address",
+                "source_file": source_file,
+            })
+            return 0
+
         update_sql = text('''
             UPDATE site_address
             SET is_current = False
@@ -1247,6 +1316,11 @@ class ProcessData:
                     :city_code, :country_code, :site_geo_coordinate_x_value, :site_geo_coordinate_y_value,
                     :is_current, :source_file)
         ''')
+
+        for col in ['site_address_zip_code', 'site_address_city', 'site_address_complement',
+                    'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value']:
+            if col not in valid.columns:
+                valid[col] = None
 
         valid['is_current'] = True
         valid['source_file'] = source_file
@@ -1331,6 +1405,43 @@ class ProcessData:
             })
             return 0
 
+        check_sql = text('''
+            SELECT site_unique_code, contact_type, contact_value, contact_role, is_primary
+            FROM site_contact
+            WHERE site_unique_code = ANY(:codes)
+              AND valid_to IS NULL;
+        ''')
+
+        codes = valid['site_unique_code'].unique().tolist()
+        with self.engine.connect() as conn:
+            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+        current_data = {
+            row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]))
+            for row in existing
+        }
+
+        def _contact_changed(r):
+            key = r['site_unique_code']
+            if key not in current_data:
+                return True
+            return current_data[key] != (
+                str(r.get('contact_type', '')),
+                str(r.get('contact_value', '')),
+                str(r.get('contact_role', '')),
+                str(r.get('is_primary', '')),
+            )
+
+        valid = valid[valid.apply(_contact_changed, axis=1)].copy()
+
+        if valid.empty:
+            logger.info("No contact changes detected, skipping insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_contact",
+                "table": "site_contact",
+                "source_file": source_file,
+            })
+            return 0
+
         update_sql = text('''
             UPDATE site_contact
             SET valid_to = current_date
@@ -1345,8 +1456,13 @@ class ProcessData:
                     :valid_from, :valid_to, :is_primary, :source_file)
         ''')
 
-        valid['valid_from'] = valid['valid_from'] if 'valid_from' in valid.columns and valid['valid_from'].notna().any() else datetime.date.today()
+        if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
+            valid['valid_from'] = datetime.date.today()
         valid['valid_to'] = None
+        if 'contact_role' not in valid.columns:
+            valid['contact_role'] = None
+        if 'is_primary' not in valid.columns:
+            valid['is_primary'] = False
         valid['source_file'] = source_file
         records = valid[['site_unique_code', 'contact_type', 'contact_value', 'contact_role',
                          'valid_from', 'valid_to', 'is_primary', 'source_file']].to_dict(orient='records')
