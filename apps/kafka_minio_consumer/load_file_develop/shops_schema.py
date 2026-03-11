@@ -57,7 +57,7 @@ class SiteFormat(BaseModel):
     @field_validator('site_format_unique_code')
     @classmethod
     def validate_site_format_unique_code(cls, v):
-        if v not in ('HYPER', 'SUPER'):
+        if v not in ('HIPER', 'SUPER'):
             raise ValueError(f"Invalid site format unique code: {v}")
         return v
 
