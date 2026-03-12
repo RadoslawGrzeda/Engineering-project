@@ -7,7 +7,7 @@ load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
 from apps.logger_config import get_logger
 
-logger = get_logger(__name__, service="streamlit")
+logger = get_logger('apps.streamlit.minio_client.py', service="streamlit")
 
 class MinioClient:
     def __init__(self):
@@ -18,9 +18,9 @@ class MinioClient:
             secure=False
         )
     
-    def upload_file(self,client_name:str,bucket_name:str,file_name:str,file_data:bytes,length:int,content_type:str):
+    def upload_file(self, client_name : str, bucket_name : str, file_name:str, file_data:bytes, length:int, content_type:str, correlation_id:str):
         try:
-            self.client.put_object(bucket_name,file_name,file_data,length,content_type)
+            self.client.put_object(bucket_name,file_name,file_data,length,content_type,metadata={'correlation_id':correlation_id})
             logger.info("File uploaded to MinIO", extra={
                 "file_name": file_name,
                 "bucket": bucket_name,
