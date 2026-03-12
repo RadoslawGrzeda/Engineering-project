@@ -15,7 +15,8 @@ import uuid
 
 class KafkaMinioConsumer:
     def __init__(self):
-        correlation_id.set(str(uuid.uuid4())[:8])
+        # correlation_id.set(str(uuid.uuid4())[:8])
+
         load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
         self.logger = get_logger(__name__, service="kafka-minio-consumer")
         self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
@@ -172,10 +173,23 @@ class KafkaMinioConsumer:
             message = self.consumer.poll(timeout_ms=1000)
             if message:
                 try:
-                    correlation_id.set(str(uuid.uuid4())[:8])   
+                    # correlation_id.set(str(uuirecord = event['Records'][0]
+                    #
+                    #   # Wyciągnij correlation_id z metadata MinIO
                     for tp, messages in message.items():
                         for msg in messages:
                             event = json.loads(msg.value.decode('utf-8'))
+                            # ---------------------
+                            # event = json.loads(message.value)
+                            record = event['Records'][0]
+
+                            # Wyciągnij correlation_id z metadata MinIO
+                            user_meta = record['s3']['object'].get('userMetadata', {})
+                            cid = user_meta.get('X-Amz-Meta-Correlation_id', str(uuid.uuid4())[:8])
+
+                            correlation_id.set(cid)
+
+                            # ---------------------
                             bucket_name = event['Records'][0]['s3']['bucket']['name']
                             raw_name = event['Records'][0]['s3']['object']['key']
                             file_key = unquote(raw_name)
