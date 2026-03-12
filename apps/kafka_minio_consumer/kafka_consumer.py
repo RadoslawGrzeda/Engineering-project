@@ -18,7 +18,7 @@ class KafkaMinioConsumer:
         # correlation_id.set(str(uuid.uuid4())[:8])
 
         load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
-        self.logger = get_logger(__name__, service="kafka-minio-consumer")
+        self.logger = get_logger('apps.kafka_minio_consumer.kafka_consumer.py', service="kafka-minio-consumer")
         self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
         self.group_id = os.getenv('KAFKA_GROUP_ID')
         self.topic=os.getenv('KAFKA_TOPIC')
