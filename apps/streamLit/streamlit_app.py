@@ -26,8 +26,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-logger = get_logger(__name__, service="streamlit")
-
+logger = get_logger('apps.streamlit.streamlit_app.py', service="streamlit")
 
 def _current_user() -> str:
     return st.session_state.get("name", "unknown")
@@ -60,7 +59,9 @@ def load_contract(file_type: str) -> dict[str, Any] | None:
         if os.path.exists(path):
             break
     else:
-        logger.warning("Contract not found", extra={
+        logger.warning("Contract not found for this type of file", extra={
+            "class": "Streamlit",
+            "method": "load_contract",
             "user": _current_user(),
             "file_type": file_type,
             "path": CONTRACTS_DIR,
@@ -69,8 +70,8 @@ def load_contract(file_type: str) -> dict[str, Any] | None:
     try:
         with open(path, "r", encoding="utf-8") as f:
             contract = safe_load(f)
-        logger.info("Contract loaded", extra={
-            "class": "StreamlitApp",
+        logger.info("Contract loaded for this file", extra={
+            "class": "Streamlit",
             "method": "load_contract",
             "user": _current_user(),
             "file_type": file_type,
@@ -78,7 +79,7 @@ def load_contract(file_type: str) -> dict[str, Any] | None:
         })
         return contract
     except Exception as e:
-        logger.error("Failed to load contract", extra={
+        logger.error("Failed to load contract for this file", extra={
             "user": _current_user(),
             "file_type": file_type,
             "path": path,
@@ -151,15 +152,15 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
         result["valid"] = False
 
     if result["valid"]:
-        logger.info("Contract validation passed", extra={
-            'class': 'StreamlitApp',
+        logger.info("Contract validation passed ", extra={
+            'class': 'Streamlit',
             'method': 'validate_against_contract',
             "user": _current_user(),
             "valid_records": len(df),
         })
     else:
         logger.warning("Contract validation failed", extra={
-            'class': 'StreamlitApp',
+            'class': 'Streamlit',
             'method': 'validate_against_contract',
             "user": _current_user(),
             "missing_cols": result["missing"],
@@ -171,7 +172,7 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
     return result
 
 
-class StreamlitApp:
+class Streamlit:
     def __init__(self):
         load_dotenv()
         self.client = MinioClient()
@@ -263,7 +264,7 @@ class StreamlitApp:
             uploaded_file.seek(0)
         except Exception as e:
             logger.error("Failed to read CSV file", extra={
-                "class": 'StreamLitApp',
+                "class": 'Streamlit',
                 "method": '_render_upload_section',
                 "user": _current_user(),
                 "file_name": uploaded_file.name,
@@ -278,7 +279,7 @@ class StreamlitApp:
 
             if result["valid"]:
                 # logger.info("File passed contract validation", extra={
-                #     "class": "StreamLitApp",
+                #     "class": "Streamlit",
                 #     "method": "_render_upload_section",
                 #     "user": _current_user(),
                 #     "file_name": uploaded_file.name,
@@ -288,7 +289,7 @@ class StreamlitApp:
                 st.success("Struktura i typy danych są poprawne.")
             else:
                 logger.warning("File rejected by contract validation", extra={
-                    "class": "StreamLitApp",
+                    "class": "Streamlit",
                     "method": "_render_upload_section",
                     "user": _current_user(),
                     "file_name": uploaded_file.name,
@@ -344,14 +345,8 @@ class StreamlitApp:
                         io.BytesIO(up_data),
                         len(up_data),
                         content_type="application/csv",
+                        correlation_id=correlation_id.get()
                     )
-                    logger.info("File uploaded", extra={
-                        'class': 'StreamLitApp',
-                        'method': '_upload_file',
-                        "user": _current_user(),
-                        "uploaded_file": file.split('/')[-1],
-                        "bucket": bucket,
-                    })
                     st.success(result_msg)
                     file_size_in_bytes = len(uploaded_file.getvalue())
                     try:
@@ -368,6 +363,7 @@ class StreamlitApp:
                         )
                         logger.info("File metadata saved to database", extra={
                             "application": "StreamLit",
+                            'class': 'Streamlit',
                             "method": "_render_upload_section",
                             "user": _current_user(),
                             "file_name": file.split('/')[-1],
@@ -386,9 +382,10 @@ class StreamlitApp:
                         raise
                     time.sleep(2)
                     st.session_state.uploaded_file_key += 1
+                    st.session_state.correlation_id = str(uuid.uuid4())[:8]
                     st.rerun()
                 except Exception as e:
-                    logger.error("Upload failed", extra={
+                    logger.error("Upload file failed", extra={
                         "user": _current_user(),
                         "uploaded_file": file.split('/')[-1],
                         "bucket": bucket,
@@ -396,6 +393,7 @@ class StreamlitApp:
                         "error": str(e),
                     }, exc_info=True)
                     st.error(f"Błąd podczas wysyłania: {e}")
+                    st.session_state.correlation_id = str(uuid.uuid4())[:8]
                     raise
 
     def _show_user_history(self):
@@ -416,6 +414,7 @@ class StreamlitApp:
             logger.error("Failed to fetch user upload history from database", extra={
                 "user": _current_user(),
                 'application': 'StreamLit',
+                'class': 'Streamlit',
                 'method': '_show_user_history',
                 "error_type": type(e).__name__,
                 "error": str(e),
@@ -541,7 +540,7 @@ class StreamlitApp:
             engine=create_engine(os.getenv('DATABASE_URL'))
         except Exception as e:
                 logger.error("Database connection failed with send file information from streamlit", extra={
-                    'class': 'StreamlitApp',
+                    'class': 'Streamlit',
                     'method': '_send_file_information_to_db',
                     "user": _current_user(),
                     'application': 'StreamLit',
@@ -574,7 +573,7 @@ class StreamlitApp:
                 conn.commit()
         except Exception as e:
                 logger.error("Failed to insert file information to database from streamlit", extra={
-                    'class': 'StreamlitApp',
+                    'class': 'Streamlit',
                     'method': '_send_file_information_to_db',
                     "user": _current_user(),
                     'application': 'StreamLit',
@@ -584,7 +583,7 @@ class StreamlitApp:
                 raise
 
     def run(self, authenticator: Authenticate):
-        correlation_id.set(str(uuid.uuid4())[:8])
+        correlation_id.set(st.session_state.correlation_id)
         if st.session_state["authentication_status"]:
             self._render_sidebar(authenticator)
             # self._show_user_history()
@@ -622,8 +621,10 @@ if __name__ == "__main__":
 
     if "uploaded_file_key" not in st.session_state:
         st.session_state.uploaded_file_key = 0
+    if "correlation_id" not in st.session_state:
+        st.session_state.correlation_id = str(uuid.uuid4())[:8]
 
-    app = StreamlitApp()
+    app = Streamlit()
     yml_config = app.init_config(yaml_path)
     authenticator = app.authentication(yml_config)
     authenticator.login("main")
