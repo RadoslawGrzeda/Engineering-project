@@ -18,7 +18,7 @@ from apps.logger_config import get_logger
 
 T = TypeVar('T', bound=BaseModel)
 
-logger = get_logger(__name__, service="kafka-minio-consumer")
+logger = get_logger("apps.kafka_minio_consumer.load_file_develop.file_processor.py", service="kafka-minio-consumer")
 
 SCHEMA_MAP = {
     'chief': Chief,
