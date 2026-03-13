@@ -7,16 +7,16 @@ import os
 from dotenv import load_dotenv
 from minio import Minio
 from apps.logger_config import get_logger, correlation_id
-from apps.kafka_minio_consumer.load_file_develop.file_processor import ProcessData
+from apps.kafka_minio_consumer.load_file_develop.file_processor import  DataLoader
 import io 
 import pandas as pd
 from sqlalchemy import create_engine, text
 import uuid
 
+MAX_RETRIES = 3
+
 class KafkaMinioConsumer:
     def __init__(self):
-        # correlation_id.set(str(uuid.uuid4())[:8])
-
         load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
         self.logger = get_logger('apps.kafka_minio_consumer.kafka_consumer.py', service="kafka-minio-consumer")
         self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
@@ -106,13 +106,14 @@ class KafkaMinioConsumer:
                 response.close()
                 response.release_conn()
     
-    def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None,engine=None):
+    def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None,engine=None, correlation_id=None):
             sql = text('''
                 UPDATE etl_load_log_product
                 SET status = :status,
                     error_message = :error_message,
                     inserted_rows_count = :inserted_rows_count,
                     rejected_rows_count = :rejected_rows_count,
+                    correlation_id = :correlation_id,
                     processed_at = NOW()
                 WHERE file_name = :file_name
                 and destination_table = :destination_table
@@ -120,13 +121,14 @@ class KafkaMinioConsumer:
             with engine.connect() as connection:
                 try:
 
-                    connection.execute(sql, {   
+                    connection.execute(sql, {
                         'destination_table': destination_table,
                         'file_name': file_name,
                         'status': status,
                         'error_message': error_message if error_message is not None else None,
                         'inserted_rows_count': inserted_rows if inserted_rows is not None else 0,
-                        'rejected_rows_count': rejected_rows if rejected_rows is not None else 0
+                        'rejected_rows_count': rejected_rows if rejected_rows is not None else 0,
+                        'correlation_id': correlation_id
                     })
                     connection.commit()
                 except Exception as e:
@@ -139,12 +141,12 @@ class KafkaMinioConsumer:
                     })
                     raise
     
-    def _validate_and_load_to_db(self, df, schema, file_key):
+    def _validate_and_load_to_db(self, df, schema, file_key, cid=None):
         '''
         '''
         try:
-            process_data=ProcessData(df,file_key)
-            self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='pending',engine=process_data.engine)
+            process_data=DataLoader(df,file_key, correlation_id=cid)
+            self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='pending',engine=process_data.engine, correlation_id=cid)
             data, errors = process_data.validate_shape(schema)
             if errors:
                 # self.logger.error("Schema validation errors: %s", errors, extra={'schema': schema, 'file_key': file_key})
@@ -154,13 +156,13 @@ class KafkaMinioConsumer:
                 len_of_load=process_data.load_to_db(data, schema)
 
                 if errors or len_of_load==0:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=process_data.engine)
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=process_data.engine, correlation_id=cid)
                 elif len_of_load < len(df):
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=process_data.engine)
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=process_data.engine, correlation_id=cid)
                 else:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=process_data.engine)
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=process_data.engine, correlation_id=cid)
             except Exception as e:
-                self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=process_data.engine)
+                self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=process_data.engine, correlation_id=cid)
                 # self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
                 raise
         except Exception as e:
@@ -168,48 +170,81 @@ class KafkaMinioConsumer:
             raise
 
             
+    def _message_key(self, tp, msg):
+        """Unique key for a Kafka message: (topic, partition, offset)."""
+        return (tp.topic, tp.partition, msg.offset)
+
     def consume_messages(self):
+        retry_counts = {}
+
         while True:
             message = self.consumer.poll(timeout_ms=1000)
-            if message:
-                try:
-                    # correlation_id.set(str(uuirecord = event['Records'][0]
-                    #
-                    #   # Wyciągnij correlation_id z metadata MinIO
-                    for tp, messages in message.items():
-                        for msg in messages:
-                            event = json.loads(msg.value.decode('utf-8'))
-                            # ---------------------
-                            # event = json.loads(message.value)
-                            record = event['Records'][0]
+            if not message:
+                continue
 
-                            # Wyciągnij correlation_id z metadata MinIO
-                            user_meta = record['s3']['object'].get('userMetadata', {})
-                            cid = user_meta.get('X-Amz-Meta-Correlation_id', str(uuid.uuid4())[:8])
+            for tp, messages in message.items():
+                for msg in messages:
+                    msg_key = self._message_key(tp, msg)
+                    file_key = bucket_name = schema = None
 
-                            correlation_id.set(cid)
+                    try:
+                        event = json.loads(msg.value.decode('utf-8'))
+                        record = event['Records'][0]
 
-                            # ---------------------
-                            bucket_name = event['Records'][0]['s3']['bucket']['name']
-                            raw_name = event['Records'][0]['s3']['object']['key']
-                            file_key = unquote(raw_name)
-                            file_name=file_key.split('/')[-1]
-                            schema=file_key.split("/")[0]
-                            self.logger.info("Received event for file '%s' in bucket '%s'", file_name, bucket_name,
-                                             extra={'class': 'KafkaMinioConsumer','method':'consume_message', 'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
-                            df=self._load_file_from_minio(bucket_name, file_key)
-                            self._validate_and_load_to_db(df, schema, file_key)
+                        user_meta = record['s3']['object'].get('userMetadata', {})
+                        cid = user_meta.get('X-Amz-Meta-Correlation_id', str(uuid.uuid4())[:8])
+                        correlation_id.set(cid)
+
+                        bucket_name = record['s3']['bucket']['name']
+                        raw_name = record['s3']['object']['key']
+                        file_key = unquote(raw_name)
+                        file_name = file_key.split('/')[-1]
+                        schema = file_key.split("/")[0]
+
+                        self.logger.info("Received event for file '%s' in bucket '%s'", file_name, bucket_name,
+                                         extra={'class': 'KafkaMinioConsumer', 'method': 'consume_messages',
+                                                'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
+
+                        df = self._load_file_from_minio(bucket_name, file_key)
+                        self._validate_and_load_to_db(df, schema, file_key, cid=cid)
+
+                        retry_counts.pop(msg_key, None)
+                        self.consumer.commit()
+
+                    except Exception as e:
+                        retries = retry_counts.get(msg_key, 0) + 1
+                        retry_counts[msg_key] = retries
+
+                        if retries >= MAX_RETRIES:
+                            self.logger.error(
+                                "Poison message — skipping after %d retries: %s",
+                                MAX_RETRIES, e,
+                                extra={
+                                    'class': 'KafkaMinioConsumer',
+                                    'method': 'consume_messages',
+                                    'file_key': file_key,
+                                    'bucket_name': bucket_name,
+                                    'schema': schema,
+                                    'topic': tp.topic,
+                                    'partition': tp.partition,
+                                    'offset': msg.offset,
+                                }, exc_info=True)
+                            retry_counts.pop(msg_key, None)
                             self.consumer.commit()
-                            # self._send_post_request(bucket_name,schema, file_key)
-                except Exception as e:
-                    self.logger.error("Error processing message from kafka: %s", e, extra={
-                        'class': 'KafkaMinioConsumer',
-                        'method': "consume_messages",
-                        'file_key': file_key,
-                        'bucket_name': bucket_name,
-                        'schema': schema
-                    }, exc_info=True)
-                    continue
+                        else:
+                            self.logger.warning(
+                                "Error processing message (retry %d/%d): %s",
+                                retries, MAX_RETRIES, e,
+                                extra={
+                                    'class': 'KafkaMinioConsumer',
+                                    'method': 'consume_messages',
+                                    'file_key': file_key,
+                                    'bucket_name': bucket_name,
+                                    'schema': schema,
+                                    'topic': tp.topic,
+                                    'partition': tp.partition,
+                                    'offset': msg.offset,
+                                }, exc_info=True)
 
 if __name__ == "__main__":
     consumer = KafkaMinioConsumer()
