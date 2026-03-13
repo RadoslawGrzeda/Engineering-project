@@ -34,11 +34,12 @@ SCHEMA_MAP = {
     'site_address': SiteAddress,
     'site_contact': SiteContact,
 }
-
-class ProcessData:
-    def __init__ (self, df: pd.DataFrame,source_file: str):
+# ProcessData
+class DataLoader:
+    def __init__ (self, df: pd.DataFrame,source_file: str, correlation_id: str = None):
         self.df = df
         self.path = source_file
+        self.correlation_id = correlation_id
         self.connection_string = os.getenv("postgress_connection")
         self.engine = sa.create_engine(self.connection_string)
     
@@ -57,7 +58,7 @@ class ProcessData:
                 except ValidationError as e:
                     errors.append((line_no, row, e.json()))
                 except Exception as e:
-                    logger.error("Error processing row", etra={
+                    logger.error(f"Error processing row {line_no}", etra={
                         'class': self.__class__.__name__,
                         'method': "validate_shape",
                         "line_no": line_no,
@@ -112,7 +113,7 @@ class ProcessData:
             'site_contact': self._load_site_contact,
         }        
         if table_name not in handler_map:
-            logger.error("Load to DB not implemented for table", 
+            logger.error("Load in to database not implemented for table",
             extra={"table": table_name,"method": "load_to_db",'class': self.__class__.__name__})
             raise NotImplementedError(f"Load to DB not implemented for table: {table_name}")
         return handler_map[table_name](df)
@@ -120,15 +121,16 @@ class ProcessData:
     def load_to_dead_letter(self, row_data:List[Tuple[int, dict, str]], source_table):
         try:
             sql = text('''
-                INSERT INTO dead_letter (source_table, source_file, raw_row, error_details, line_no)
-                VALUES (:source_table, :source_file, :raw_row, :error_details, :line_no)
+                INSERT INTO dead_letter (source_table, source_file, raw_row, error_details, line_no, correlation_id)
+                VALUES (:source_table, :source_file, :raw_row, :error_details, :line_no, :correlation_id)
             ''')
             records=[{
                 "source_table": source_table,
                 "source_file": self.path,
                 "raw_row": json.dumps(row,default=str),
                 "error_details": error_details,
-                "line_no": line_no,  
+                "line_no": line_no,
+                "correlation_id": self.correlation_id,
             } for line_no, row, error_details in row_data]
             
             with self.engine.begin() as conn:
@@ -689,52 +691,63 @@ class ProcessData:
         existing_art_keys = self._get_existing_art_keys()
         valid = df[df["art_key"].isin(existing_art_keys)].copy()
 
-        # if valid.empty:
-        #     return
-
-        # Pobierz bieżące ceny z bazy – wstawiamy tylko gdy (art_key, ean) nowe lub cena się zmieniła
-        current = self._get_current_pos_information(set(valid["art_key"]))
-        current = current.rename(columns={
-            "price_net": "price_net_db",
-            "price_gross": "price_gross_db",
-            "vat_rate": "vat_rate_db",
-        })
-        merged = valid.merge(current, on=["art_key", "ean"], how="left")
-
-        # Ten sam (art_key, ean) i ta sama cena = pomijamy (nie wstawiamy ponownie)
-        price_unchanged = (
-            merged["price_net_db"].notna()
-            & (merged["price_net"] == merged["price_net_db"])
-            & (merged["price_gross"] == merged["price_gross_db"])
-            & (merged["vat_rate"] == merged["vat_rate_db"])
-        )
-        to_insert = (
-            merged[~price_unchanged]
-            .drop(columns=["price_net_db", "price_gross_db", "vat_rate_db"], errors="ignore")
-            .drop_duplicates(subset=["art_key", "ean"])
-        )
-
-        if to_insert.empty:
-            logger.info("pos_information: no new or changed rows to load.")
+        if valid.empty:
+            logger.info("pos_information: no valid art_keys found.")
             return 0
 
-        to_insert = to_insert.copy()
-        to_insert["date_start"] = datetime.date(2023, 1, 1)
-        to_insert["source_file"] = source_file
-        to_insert["last_modified_date"] = datetime.datetime.now()
-        to_insert["date_end"] = None
-        to_insert["is_current"] = True
-        valid_df = to_insert.to_dict(orient="records")
-
-        update_df = to_insert[["art_key", "ean"]].drop_duplicates()
-        update_df["source_file"] = source_file
-        update_df["date_end"] = datetime.date.today()
-        update_df["is_current"] = False
-        update_df["last_modified_date"] = datetime.datetime.now()
-        update_rows = update_df.to_dict(orient="records")
+        # SELECT + compare + UPDATE + INSERT w jednej transakcji z blokowaniem wierszy (FOR UPDATE)
+        # Zapobiega race condition gdy dwa pliki przetwarzają ten sam art_key równocześnie
+        lock_sql = text(
+            "SELECT art_key, ean, price_net, price_gross, vat_rate "
+            "FROM pos_information WHERE date_end IS NULL AND art_key = ANY(:keys) "
+            "FOR UPDATE"
+        )
 
         with self.engine.begin() as conn:
             try:
+                art_key_list = valid["art_key"].unique().tolist()
+                rows = conn.execute(lock_sql, {"keys": art_key_list}).fetchall()
+                current = pd.DataFrame(
+                    rows, columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"]
+                )
+                current = current.rename(columns={
+                    "price_net": "price_net_db",
+                    "price_gross": "price_gross_db",
+                    "vat_rate": "vat_rate_db",
+                })
+                merged = valid.merge(current, on=["art_key", "ean"], how="left")
+
+                price_unchanged = (
+                    merged["price_net_db"].notna()
+                    & (merged["price_net"] == merged["price_net_db"])
+                    & (merged["price_gross"] == merged["price_gross_db"])
+                    & (merged["vat_rate"] == merged["vat_rate_db"])
+                )
+                to_insert = (
+                    merged[~price_unchanged]
+                    .drop(columns=["price_net_db", "price_gross_db", "vat_rate_db"], errors="ignore")
+                    .drop_duplicates(subset=["art_key", "ean"])
+                )
+
+                if to_insert.empty:
+                    logger.info("pos_information: no new or changed rows to load.")
+                    return 0
+
+                to_insert = to_insert.copy()
+                to_insert["date_start"] = datetime.date(2023, 1, 1)
+                to_insert["source_file"] = source_file
+                to_insert["last_modified_date"] = datetime.datetime.now()
+                to_insert["date_end"] = None
+                to_insert["is_current"] = True
+                valid_df = to_insert.to_dict(orient="records")
+
+                update_df = to_insert[["art_key", "ean"]].drop_duplicates()
+                update_df["source_file"] = source_file
+                update_df["date_end"] = datetime.date.today()
+                update_df["is_current"] = False
+                update_df["last_modified_date"] = datetime.datetime.now()
+                update_rows = update_df.to_dict(orient="records")
+
                 if update_rows:
                     logger.info("Closing outdated pos_information records", extra={
                         'class': self.__class__.__name__,
@@ -770,7 +783,7 @@ class ProcessData:
                     "error_type": type(e).__name__,
                     "error": str(e),
                 }, exc_info=True)
-                raise 
+                raise
             
 
     def _load_product(self, df: pd.DataFrame) -> None:
@@ -990,32 +1003,14 @@ class ProcessData:
             })
             return 0
 
+        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
             SELECT site_unique_code, site_status_code
             FROM site_info
             WHERE site_unique_code = ANY(:codes)
-              AND is_current = True;
+              AND is_current = True
+            FOR UPDATE;
         ''')
-
-        codes = valid['site_unique_code'].unique().tolist()
-        with self.engine.connect() as conn:
-            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
-        current_status = {row[0]: row[1] for row in existing}
-
-        changed_mask = valid['site_unique_code'].apply(
-            lambda code: current_status.get(code) != valid.loc[valid['site_unique_code'] == code, 'site_status_code'].iloc[0]
-        )
-        new_mask = ~valid['site_unique_code'].isin(current_status.keys())
-        valid = valid[changed_mask | new_mask].copy()
-
-        if valid.empty:
-            logger.info("No status changes detected, skipping insert", extra={
-                'class': self.__class__.__name__,
-                'method': "_load_site_info",
-                "table": "site_info",
-                "source_file": source_file,
-            })
-            return 0
 
         update_sql = text('''
             UPDATE site_info
@@ -1032,35 +1027,55 @@ class ProcessData:
                     :is_current, :valid_from, :valid_to, :source_file)
         ''')
 
-        if 'valid_from' in valid.columns and valid['valid_from'].notna().any():
-            pass
-        else:
-            valid['valid_from'] = datetime.date.today()
-
-        is_active = valid['site_status_code'] == "ACTIVE"
-
-        if 'site_opening_date' in valid.columns and valid['site_opening_date'].notna().any():
-            valid['site_opening_date'] = valid['site_opening_date']
-        else:
-            valid['site_opening_date'] = datetime.date.today()
-
-        valid['valid_to'] = None
-        valid.loc[~is_active, 'valid_to'] = datetime.date.today()
-
-        if 'site_closing_date' not in valid.columns:
-            valid['site_closing_date'] = None
-        valid.loc[is_active, 'site_closing_date'] = None
-        valid.loc[~is_active, 'site_closing_date'] = valid.loc[~is_active, 'site_closing_date'].fillna(datetime.date.today())
-
-        valid['is_current'] = True
-        valid['source_file'] = source_file
-        records = valid[['site_unique_code', 'site_status_code', 'site_opening_date', 'site_closing_date',
-                         'is_current', 'valid_from', 'valid_to', 'source_file']].to_dict(orient='records')
-
-        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+        codes = valid['site_unique_code'].unique().tolist()
 
         with self.engine.begin() as conn:
             try:
+                existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+                current_status = {row[0]: row[1] for row in existing}
+
+                changed_mask = valid['site_unique_code'].apply(
+                    lambda code: current_status.get(code) != valid.loc[valid['site_unique_code'] == code, 'site_status_code'].iloc[0]
+                )
+                new_mask = ~valid['site_unique_code'].isin(current_status.keys())
+                valid = valid[changed_mask | new_mask].copy()
+
+                if valid.empty:
+                    logger.info("No status changes detected, skipping insert", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_info",
+                        "table": "site_info",
+                        "source_file": source_file,
+                    })
+                    return 0
+
+                if 'valid_from' in valid.columns and valid['valid_from'].notna().any():
+                    pass
+                else:
+                    valid['valid_from'] = datetime.date.today()
+
+                is_active = valid['site_status_code'] == "ACTIVE"
+
+                if 'site_opening_date' in valid.columns and valid['site_opening_date'].notna().any():
+                    valid['site_opening_date'] = valid['site_opening_date']
+                else:
+                    valid['site_opening_date'] = datetime.date.today()
+
+                valid['valid_to'] = None
+                valid.loc[~is_active, 'valid_to'] = datetime.date.today()
+
+                if 'site_closing_date' not in valid.columns:
+                    valid['site_closing_date'] = None
+                valid.loc[is_active, 'site_closing_date'] = None
+                valid.loc[~is_active, 'site_closing_date'] = valid.loc[~is_active, 'site_closing_date'].fillna(datetime.date.today())
+
+                valid['is_current'] = True
+                valid['source_file'] = source_file
+                records = valid[['site_unique_code', 'site_status_code', 'site_opening_date', 'site_closing_date',
+                                 'is_current', 'valid_from', 'valid_to', 'source_file']].to_dict(orient='records')
+
+                update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
                 if update_records:
                     logger.info("Closing outdated site_info records", extra={
                         'class': self.__class__.__name__,
@@ -1134,32 +1149,14 @@ class ProcessData:
             })
             return 0
 
+        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
             SELECT site_unique_code, site_format_unique_code
             FROM site_format
             WHERE site_unique_code = ANY(:codes)
-              AND is_current = True;
+              AND is_current = True
+            FOR UPDATE;
         ''')
-
-        codes = valid['site_unique_code'].unique().tolist()
-        with self.engine.connect() as conn:
-            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
-        current_data = {row[0]: row[1] for row in existing}
-
-        changed_mask = valid.apply(
-            lambda r: current_data.get(r['site_unique_code']) != r['site_format_unique_code'], axis=1
-        )
-        new_mask = ~valid['site_unique_code'].isin(current_data.keys())
-        valid = valid[changed_mask | new_mask].copy()
-
-        if valid.empty:
-            logger.info("No format changes detected, skipping insert", extra={
-                'class': self.__class__.__name__,
-                'method': "_load_site_format",
-                "table": "site_format",
-                "source_file": source_file,
-            })
-            return 0
 
         update_sql = text('''
             UPDATE site_format
@@ -1174,18 +1171,38 @@ class ProcessData:
             VALUES (:site_unique_code, :site_format_unique_code, :is_current, :valid_from, :valid_to, :source_file)
         ''')
 
-        if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
-            valid['valid_from'] = datetime.date.today()
-        valid['valid_to'] = None
-        valid['is_current'] = True
-        valid['source_file'] = source_file
-        records = valid[['site_unique_code', 'site_format_unique_code', 'is_current', 'valid_from',
-                         'valid_to', 'source_file']].to_dict(orient='records')
-
-        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+        codes = valid['site_unique_code'].unique().tolist()
 
         with self.engine.begin() as conn:
             try:
+                existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+                current_data = {row[0]: row[1] for row in existing}
+
+                changed_mask = valid.apply(
+                    lambda r: current_data.get(r['site_unique_code']) != r['site_format_unique_code'], axis=1
+                )
+                new_mask = ~valid['site_unique_code'].isin(current_data.keys())
+                valid = valid[changed_mask | new_mask].copy()
+
+                if valid.empty:
+                    logger.info("No format changes detected, skipping insert", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_format",
+                        "table": "site_format",
+                        "source_file": source_file,
+                    })
+                    return 0
+
+                if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
+                    valid['valid_from'] = datetime.date.today()
+                valid['valid_to'] = None
+                valid['is_current'] = True
+                valid['source_file'] = source_file
+                records = valid[['site_unique_code', 'site_format_unique_code', 'is_current', 'valid_from',
+                                 'valid_to', 'source_file']].to_dict(orient='records')
+
+                update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
                 if update_records:
                     logger.info("Closing outdated site_format records", extra={
                         'class': self.__class__.__name__,
@@ -1259,47 +1276,15 @@ class ProcessData:
             })
             return 0
 
+        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
             SELECT site_unique_code, site_address_zip_code, site_address_city, site_address_complement,
                    city_code, country_code, site_geo_coordinate_x_value, site_geo_coordinate_y_value
             FROM site_address
             WHERE site_unique_code = ANY(:codes)
-              AND is_current = True;
+              AND is_current = True
+            FOR UPDATE;
         ''')
-
-        codes = valid['site_unique_code'].unique().tolist()
-        with self.engine.connect() as conn:
-            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
-        current_data = {
-            row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]),
-                     str(row[5]), str(row[6]), str(row[7]))
-            for row in existing
-        }
-
-        def _address_changed(r):
-            key = r['site_unique_code']
-            if key not in current_data:
-                return True
-            return current_data[key] != (
-                str(r.get('site_address_zip_code', '')),
-                str(r.get('site_address_city', '')),
-                str(r.get('site_address_complement', '')),
-                str(r.get('city_code', '')),
-                str(r.get('country_code', '')),
-                str(r.get('site_geo_coordinate_x_value', '')),
-                str(r.get('site_geo_coordinate_y_value', '')),
-            )
-
-        valid = valid[valid.apply(_address_changed, axis=1)].copy()
-
-        if valid.empty:
-            logger.info("No address changes detected, skipping insert", extra={
-                'class': self.__class__.__name__,
-                'method': "_load_site_address",
-                "table": "site_address",
-                "source_file": source_file,
-            })
-            return 0
 
         update_sql = text('''
             UPDATE site_address
@@ -1317,21 +1302,55 @@ class ProcessData:
                     :is_current, :source_file)
         ''')
 
-        for col in ['site_address_zip_code', 'site_address_city', 'site_address_complement',
-                    'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value']:
-            if col not in valid.columns:
-                valid[col] = None
-
-        valid['is_current'] = True
-        valid['source_file'] = source_file
-        records = valid[['site_unique_code', 'site_address_zip_code', 'site_address_city', 'site_address_complement',
-                         'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value',
-                         'is_current', 'source_file']].to_dict(orient='records')
-
-        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+        codes = valid['site_unique_code'].unique().tolist()
 
         with self.engine.begin() as conn:
             try:
+                existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+                current_data = {
+                    row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]),
+                             str(row[5]), str(row[6]), str(row[7]))
+                    for row in existing
+                }
+
+                def _address_changed(r):
+                    key = r['site_unique_code']
+                    if key not in current_data:
+                        return True
+                    return current_data[key] != (
+                        str(r.get('site_address_zip_code', '')),
+                        str(r.get('site_address_city', '')),
+                        str(r.get('site_address_complement', '')),
+                        str(r.get('city_code', '')),
+                        str(r.get('country_code', '')),
+                        str(r.get('site_geo_coordinate_x_value', '')),
+                        str(r.get('site_geo_coordinate_y_value', '')),
+                    )
+
+                valid = valid[valid.apply(_address_changed, axis=1)].copy()
+
+                if valid.empty:
+                    logger.info("No address changes detected, skipping insert", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_address",
+                        "table": "site_address",
+                        "source_file": source_file,
+                    })
+                    return 0
+
+                for col in ['site_address_zip_code', 'site_address_city', 'site_address_complement',
+                            'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value']:
+                    if col not in valid.columns:
+                        valid[col] = None
+
+                valid['is_current'] = True
+                valid['source_file'] = source_file
+                records = valid[['site_unique_code', 'site_address_zip_code', 'site_address_city', 'site_address_complement',
+                                 'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value',
+                                 'is_current', 'source_file']].to_dict(orient='records')
+
+                update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
                 if update_records:
                     logger.info("Closing outdated site_address records", extra={
                         'class': self.__class__.__name__,
@@ -1405,42 +1424,14 @@ class ProcessData:
             })
             return 0
 
+        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
             SELECT site_unique_code, contact_type, contact_value, contact_role, is_primary
             FROM site_contact
             WHERE site_unique_code = ANY(:codes)
-              AND valid_to IS NULL;
+              AND valid_to IS NULL
+            FOR UPDATE;
         ''')
-
-        codes = valid['site_unique_code'].unique().tolist()
-        with self.engine.connect() as conn:
-            existing = conn.execute(check_sql, {"codes": codes}).fetchall()
-        current_data = {
-            row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]))
-            for row in existing
-        }
-
-        def _contact_changed(r):
-            key = r['site_unique_code']
-            if key not in current_data:
-                return True
-            return current_data[key] != (
-                str(r.get('contact_type', '')),
-                str(r.get('contact_value', '')),
-                str(r.get('contact_role', '')),
-                str(r.get('is_primary', '')),
-            )
-
-        valid = valid[valid.apply(_contact_changed, axis=1)].copy()
-
-        if valid.empty:
-            logger.info("No contact changes detected, skipping insert", extra={
-                'class': self.__class__.__name__,
-                'method': "_load_site_contact",
-                "table": "site_contact",
-                "source_file": source_file,
-            })
-            return 0
 
         update_sql = text('''
             UPDATE site_contact
@@ -1456,21 +1447,51 @@ class ProcessData:
                     :valid_from, :valid_to, :is_primary, :source_file)
         ''')
 
-        if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
-            valid['valid_from'] = datetime.date.today()
-        valid['valid_to'] = None
-        if 'contact_role' not in valid.columns:
-            valid['contact_role'] = None
-        if 'is_primary' not in valid.columns:
-            valid['is_primary'] = False
-        valid['source_file'] = source_file
-        records = valid[['site_unique_code', 'contact_type', 'contact_value', 'contact_role',
-                         'valid_from', 'valid_to', 'is_primary', 'source_file']].to_dict(orient='records')
-
-        update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+        codes = valid['site_unique_code'].unique().tolist()
 
         with self.engine.begin() as conn:
             try:
+                existing = conn.execute(check_sql, {"codes": codes}).fetchall()
+                current_data = {
+                    row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]))
+                    for row in existing
+                }
+
+                def _contact_changed(r):
+                    key = r['site_unique_code']
+                    if key not in current_data:
+                        return True
+                    return current_data[key] != (
+                        str(r.get('contact_type', '')),
+                        str(r.get('contact_value', '')),
+                        str(r.get('contact_role', '')),
+                        str(r.get('is_primary', '')),
+                    )
+
+                valid = valid[valid.apply(_contact_changed, axis=1)].copy()
+
+                if valid.empty:
+                    logger.info("No contact changes detected, skipping insert", extra={
+                        'class': self.__class__.__name__,
+                        'method': "_load_site_contact",
+                        "table": "site_contact",
+                        "source_file": source_file,
+                    })
+                    return 0
+
+                if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
+                    valid['valid_from'] = datetime.date.today()
+                valid['valid_to'] = None
+                if 'contact_role' not in valid.columns:
+                    valid['contact_role'] = None
+                if 'is_primary' not in valid.columns:
+                    valid['is_primary'] = False
+                valid['source_file'] = source_file
+                records = valid[['site_unique_code', 'contact_type', 'contact_value', 'contact_role',
+                                 'valid_from', 'valid_to', 'is_primary', 'source_file']].to_dict(orient='records')
+
+                update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+
                 if update_records:
                     logger.info("Closing outdated site_contact records", extra={
                         'class': self.__class__.__name__,
@@ -1497,7 +1518,7 @@ class ProcessData:
                 })
                 return len(records)
             except Exception as e:
-                logger.error("DB insert failed", extra={
+                logger.error("Insert into Database failed", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_site_contact",
                     "table": "site_contact",
