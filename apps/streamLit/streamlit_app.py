@@ -176,6 +176,7 @@ class Streamlit:
     def __init__(self):
         load_dotenv()
         self.client = MinioClient()
+        self.engine=create_engine(os.getenv("DATABASE_URL"))
 
     def init_config(self, yaml_path: str) -> dict:
         with open(yaml_path, "r") as f:
@@ -397,7 +398,7 @@ class Streamlit:
                     raise
 
     def _show_user_history(self):
-        engine=create_engine(os.getenv("DATABASE_URL"))
+        # engine=create_engine(os.getenv("DATABASE_URL"))
         query = text("""
             SELECT file_name, processed_at, status, destination_table,
                    inserted_rows_count, rejected_rows_count, number_of_rows, error_message
@@ -406,7 +407,7 @@ class Streamlit:
             ORDER BY processed_at DESC
         """)
         try:
-            with engine.connect() as conn:
+            with self.engine.connect() as conn:
                     result = conn.execute(query, {"user_name": _current_user()})
                     history = result.fetchall()
                     conn.commit()
@@ -536,18 +537,18 @@ class Streamlit:
         This method is responsible for send information to db about existing file,
         which was send from streamlit app from specified user. Information is send to table etl_load_log_product, which is used for monitoring and tracking file uploads.
         '''
-        try:
-            engine=create_engine(os.getenv('DATABASE_URL'))
-        except Exception as e:
-                logger.error("Database connection failed with send file information from streamlit", extra={
-                    'class': 'Streamlit',
-                    'method': '_send_file_information_to_db',
-                    "user": _current_user(),
-                    'application': 'StreamLit',
-                    "error_type": type(e).__name__,
-                    "error": str(e),
-                }, exc_info=True)
-                raise
+        # try:
+        #     engine=create_engine(os.getenv('DATABASE_URL'))
+        # except Exception as e:
+        #         logger.error("Database connection failed with send file information from streamlit", extra={
+        #             'class': 'Streamlit',
+        #             'method': '_send_file_information_to_db',
+        #             "user": _current_user(),
+        #             'application': 'StreamLit',
+        #             "error_type": type(e).__name__,
+        #             "error": str(e),
+        #         }, exc_info=True)
+        #         raise
 
         sql = text('''
                 INSERT INTO etl_load_log_product(
@@ -558,7 +559,7 @@ class Streamlit:
         ''')
 
         try:
-            with engine.connect() as conn:
+            with self.engine.connect() as conn:
                 conn.execute(sql, {
                     "user_name": user_name,
                     "destination_table": destination_table,
