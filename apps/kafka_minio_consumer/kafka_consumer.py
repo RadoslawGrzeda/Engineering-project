@@ -22,6 +22,7 @@ class KafkaMinioConsumer:
         self.bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
         self.group_id = os.getenv('KAFKA_GROUP_ID')
         self.topic=os.getenv('KAFKA_TOPIC')
+        self.db_engine = create_engine(os.getenv('postgress_connection'))
         # self.db_engine = create_engine(os.getenv('POSTGRES_CONNECTION'))
         # self.airflow_api_url = os.getenv('AIRFLOW_API_URL')
         # self.API_USER = os.getenv('API_USER')
@@ -30,7 +31,7 @@ class KafkaMinioConsumer:
             self.consumer = KafkaConsumer(
                                     bootstrap_servers=[self.bootstrap_servers],
                                     group_id=self.group_id,
-                                    auto_offset_reset='latest',
+                                    auto_offset_reset='earliest',
                                     enable_auto_commit=False,
                                     auto_commit_interval_ms=5000,
                                     session_timeout_ms=30000,
@@ -118,7 +119,7 @@ class KafkaMinioConsumer:
                 WHERE file_name = :file_name
                 and destination_table = :destination_table
             ''')
-            with engine.connect() as connection:
+            with self.db_engine.connect() as connection:
                 try:
 
                     connection.execute(sql, {
@@ -145,8 +146,8 @@ class KafkaMinioConsumer:
         '''
         '''
         try:
-            process_data=DataLoader(df,file_key, correlation_id=cid)
-            self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='pending',engine=process_data.engine, correlation_id=cid)
+            process_data=DataLoader(df,file_key, correlation_id=cid,engine=self.db_engine)
+            self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='pending',engine=self.db_engine, correlation_id=cid)
             data, errors = process_data.validate_shape(schema)
             if errors:
                 # self.logger.error("Schema validation errors: %s", errors, extra={'schema': schema, 'file_key': file_key})
@@ -156,13 +157,13 @@ class KafkaMinioConsumer:
                 len_of_load=process_data.load_to_db(data, schema)
 
                 if errors or len_of_load==0:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=process_data.engine, correlation_id=cid)
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=self.db_engine, correlation_id=cid)
                 elif len_of_load < len(df):
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=process_data.engine, correlation_id=cid)
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=self.db_engine, correlation_id=cid)
                 else:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=process_data.engine, correlation_id=cid)
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=self.db_engine, correlation_id=cid)
             except Exception as e:
-                self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=process_data.engine, correlation_id=cid)
+                self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(e), engine=self.db_engine, correlation_id=cid)
                 # self.logger.error("Error during loading to database: %s", e, extra={'schema': schema, 'file_key': file_key})
                 raise
         except Exception as e:
