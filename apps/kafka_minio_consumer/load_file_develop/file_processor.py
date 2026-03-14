@@ -36,13 +36,13 @@ SCHEMA_MAP = {
 }
 # ProcessData
 class DataLoader:
-    def __init__ (self, df: pd.DataFrame,source_file: str, correlation_id: str = None):
+    def __init__ (self, df: pd.DataFrame,source_file: str, correlation_id: str = None,engine: sa.engine.Engine = None):
         self.df = df
         self.path = source_file
         self.correlation_id = correlation_id
         self.connection_string = os.getenv("postgress_connection")
-        self.engine = sa.create_engine(self.connection_string)
-    
+        # self.engine = sa.create_engine(self.connection_string)
+        self.engine = engine or sa.create_engine(self.connection_string)
 
     def validate_shape(self, schema_name: str):
         shape=SCHEMA_MAP[schema_name]
@@ -58,7 +58,7 @@ class DataLoader:
                 except ValidationError as e:
                     errors.append((line_no, row, e.json()))
                 except Exception as e:
-                    logger.error(f"Error processing row {line_no}", etra={
+                    logger.error(f"Error processing row {line_no}", extra={
                         'class': self.__class__.__name__,
                         'method': "validate_shape",
                         "line_no": line_no,
@@ -597,12 +597,11 @@ class DataLoader:
             if not art_keys:
                 return pd.DataFrame(columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"])
             with self.engine.begin() as conn:
-                placeholders = ",".join(str(k) for k in art_keys)
                 q = text(
                     "SELECT art_key, ean, price_net, price_gross, vat_rate "
-                    "FROM pos_information WHERE date_end IS NULL AND art_key IN (" + placeholders + ")"
+                    "FROM pos_information WHERE date_end IS NULL AND art_key = ANY(:keys)"
                 )
-                rows = conn.execute(q)
+                rows = conn.execute(q, {"keys": list(art_keys)})
                 return pd.DataFrame(
                     rows.fetchall(),
                     columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"],
