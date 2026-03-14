@@ -1,0 +1,553 @@
+import logging
+from typing import Any
+import time
+import io
+import os
+import sys
+from datetime import datetime
+
+import streamlit as st
+import streamlit_authenticator as stauth
+from dotenv import load_dotenv
+from yaml import safe_load
+import pandas as pd
+from minio_client import MinioClient
+from streamlit_authenticator import Authenticate
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
+from apps.logger_config import get_logger
+from sqlalchemy import create_engine, text
+
+
+
+
+st.set_page_config(
+    page_title="Data Loader",
+    page_icon="📂",
+    layout="centered",
+    initial_sidebar_state="expanded",
+)
+
+logger = get_logger(__name__, service="streamlit")
+
+
+def _current_user() -> str:
+    return st.session_state.get("name", "unknown")
+
+
+CONTRACTS_DIR = os.path.join(os.path.dirname(__file__), "contracts")
+
+BUCKET_OPTIONS: dict[str, list[str]] = {
+    "sklep": ["test", "cos"],
+    "produkt": ["Chief", "Segment", "Sector", "Department", "Pos_Information", "Contractor", "Product"],
+}
+
+BUCKET_LABELS: dict[str, str] = {
+    "sklep": "Sklep",
+    "produkt": "Produkt",
+}
+
+FRESHNESS_LABELS: dict[str, str] = {
+    "when_file_arrives": "Przy wgraniu pliku",
+    "daily": "Codziennie",
+    "weekly": "Co tydzień",
+    "monthly": "Co miesiąc",
+}
+
+
+def load_contract(file_type: str) -> dict[str, Any] | None:
+    file_type = file_type.lower()
+    path = os.path.join(CONTRACTS_DIR, f"{file_type}.yaml")
+    if not os.path.exists(path):
+        logger.warning("Contract not found", extra={
+            "user": _current_user(),
+            "file_type": file_type,
+            "path": path,
+        })
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            contract = safe_load(f)
+        logger.info("Contract loaded", extra={
+            "user": _current_user(),
+            "file_type": file_type,
+            "path": path,
+        })
+        return contract
+    except Exception as e:
+        logger.error("Failed to load contract", extra={
+            "user": _current_user(),
+            "file_type": file_type,
+            "path": path,
+            "error_type": type(e).__name__,
+            "error": str(e),
+        }, exc_info=True)
+        return None
+
+
+def _validate_col_type(series: pd.Series, expected_type: str) -> bool:
+    non_null = series.dropna()
+    if non_null.empty:
+        return True
+    try:
+        if expected_type == "integer":
+            non_null.astype(float).apply(lambda x: int(x) if x == int(x) else (_ for _ in ()).throw(ValueError()))
+        elif expected_type == "float":
+            non_null.astype(float)
+        elif expected_type == "boolean":
+            valid = {"0", "1", "true", "false", "t", "f", "yes", "no", "y", "n"}
+            if not non_null.astype(str).str.lower().isin(valid).all():
+                return False
+        elif expected_type == "date":
+            pd.to_datetime(non_null)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
+def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any]:
+    """Validate a DataFrame against a data contract.
+
+    Returns a result dict with keys:
+      valid, missing, extra, nullable_errors, type_errors
+    """
+    result: dict[str, Any] = {
+        "valid": True,
+        "missing": [],
+        "extra": [],
+        "nullable_errors": [],
+        "type_errors": [],
+    }
+
+    contract_cols = {col["name"] for col in contract["columns"]}
+    df_cols = set(df.columns)
+    result["missing"] = sorted(contract_cols - df_cols)
+    result["extra"] = sorted(df_cols - contract_cols)
+
+    if result["missing"] or result["extra"]:
+        result["valid"] = False
+        return result
+
+    for col_def in contract["columns"]:
+        col_name = col_def["name"]
+        col_type = col_def.get("type", "string")
+        nullable = col_def.get("nullable", True)
+
+        if not nullable and df[col_name].isnull().any():
+            result["nullable_errors"].append(col_name)
+
+        if not _validate_col_type(df[col_name], col_type):
+            result["type_errors"].append(col_name)
+
+    if result["nullable_errors"] or result["type_errors"]:
+        result["valid"] = False
+
+    if result["valid"]:
+        logger.info("Contract validation passed", extra={
+            'class': 'StreamlitApp',
+            'method': 'validate_against_contract',
+            "user": _current_user(),
+            "valid_records": len(df),
+        })
+    else:
+        logger.warning("Contract validation failed", extra={
+            'class': 'StreamlitApp',
+            'method': 'validate_against_contract',
+            "user": _current_user(),
+            "missing_cols": result["missing"],
+            "extra_cols": result["extra"],
+            "nullable_errors": result["nullable_errors"],
+            "type_errors": result["type_errors"],
+        })
+        raise ValueError("Contract validation failed")
+
+
+class StreamlitApp:
+    def __init__(self):
+        load_dotenv()
+        self.client = MinioClient()
+
+    def init_config(self, yaml_path: str) -> dict:
+        with open(yaml_path, "r") as f:
+            yaml_content = f.read()
+        yaml_content = yaml_content.replace("COOKIE_KEY_PLACEHOLDER", os.getenv("API_KEY"))
+        yaml_content = yaml_content.replace("USER_NAME_PLACEHOLDER", os.getenv("name"))
+        yaml_content = yaml_content.replace("USER_PASSWORD_PLACEHOLDER", os.getenv("password"))
+        yaml_content = yaml_content.replace("ADMIN_PASSWORD_PLACEHOLDER", os.getenv("admin_pass"))
+        yaml_content = yaml_content.replace("ADMIN_NAME_PLACEHOLDER", os.getenv("admin_name"))
+        return safe_load(yaml_content)
+
+    def authentication(self, config: dict) -> Authenticate:
+        return stauth.Authenticate(
+            config["credentials"],
+            config["cookie"]["name"],
+            config["cookie"]["key"],
+            config["cookie"]["expiry_days"],
+        )
+
+    def _render_sidebar(self, authenticator: Authenticate):
+        with st.sidebar:
+            st.markdown("## Profil użytkownika")
+            name = st.session_state.get("name", "")
+            roles = st.session_state.get("roles", [])
+            st.markdown(f"**Użytkownik:** {name}")
+            if roles:
+                roles_str = ", ".join(roles) if isinstance(roles, list) else str(roles)
+                st.markdown(f"**Role:** {roles_str}")
+            st.divider()
+            authenticator.logout(button_name="Wyloguj", location="sidebar")
+
+    def _render_contract_info(self, contract: dict):
+        with st.expander("Podgląd kontraktu danych", expanded=False):
+            st.markdown(f"**Opis:** {contract.get('description', '—')}")
+
+            col_sla, col_policy = st.columns(2)
+            sla = contract.get("sla", {})
+            policy = contract.get("change_policy", {})
+
+            with col_sla:
+                st.markdown("**SLA**")
+                freshness_raw = sla.get("freshness", "—")
+                freshness_label = FRESHNESS_LABELS.get(freshness_raw, freshness_raw)
+                st.markdown(f"- Odświeżanie: `{freshness_label}`")
+                st.markdown(f"- Maks. opóźnienie: `{sla.get('max_delay_hours', '—')} h`")
+                st.markdown(f"- Właściciel: `{sla.get('owner', '—')}`")
+
+            with col_policy:
+                st.markdown("**Polityka zmian**")
+                review = "Tak" if policy.get("review_required") else "Nie"
+                st.markdown(f"- Review wymagany: `{review}`")
+                breaking = policy.get("breaking_changes", "—")
+                st.markdown(f"- Breaking changes: `{breaking}`")
+                notify = policy.get("notify", [])
+                if notify:
+                    st.markdown(f"- Powiadomienia: `{', '.join(notify)}`")
+
+            st.markdown("**Kolumny**")
+            col_defs = contract.get("columns", [])
+            df_contract = pd.DataFrame(col_defs)[["name", "type", "nullable"]]
+            df_contract.columns = ["Kolumna", "Typ", "Nullable"]
+            df_contract["Nullable"] = df_contract["Nullable"].map({True: "tak", False: "nie"})
+            st.dataframe(df_contract, width="stretch", hide_index=True)
+
+    def _render_upload_section(self, bucket: str, file_type: str):
+        st.markdown("---")
+
+        contract = load_contract(file_type)
+        if contract:
+            self._render_contract_info(contract)
+        else:
+            st.info("Brak kontraktu danych dla tego typu pliku – walidacja struktury pominięta.")
+
+        st.subheader("Wgraj plik")
+        uploaded_file = st.file_uploader(
+            f"Wybierz plik CSV dla **{file_type}**",
+            type=["csv"],
+            key=f"uploaded_file_{st.session_state.uploaded_file_key}",
+        )
+
+        if uploaded_file is None:
+            return
+
+        try:
+            df = pd.read_csv(uploaded_file)
+            uploaded_file.seek(0)
+        except Exception as e:
+            logger.error("Failed to read CSV file", extra={
+                "application": 'StreamLit',
+                "method": '_render_upload_section',
+                "user": _current_user(),
+                "file_name": uploaded_file.name,
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            st.error(f"Nie udało się wczytać pliku CSV: {e}")
+            raise
+
+        if contract:
+            result = validate_against_contract(df, contract)
+
+            if result["valid"]:
+                st.success("Struktura i typy danych są poprawne.")
+            else:
+                errors = []
+                if result["missing"]:
+                    errors.append(f"Brakujące kolumny: `{', '.join(result['missing'])}`")
+                if result["extra"]:
+                    errors.append(f"Nieoczekiwane kolumny: `{', '.join(result['extra'])}`")
+                if result["nullable_errors"]:
+                    errors.append(f"Puste wartości w kolumnach non-nullable: `{', '.join(result['nullable_errors'])}`")
+                if result["type_errors"]:
+                    errors.append(f"Niezgodność typów w kolumnach: `{', '.join(result['type_errors'])}`")
+                st.error("Walidacja nie przeszła:\n\n" + "\n\n".join(errors))
+                return
+
+        with st.expander("Podgląd danych (pierwsze 10 wierszy)", expanded=True):
+            st.dataframe(df.head(10), width="stretch", hide_index=True)
+
+        st.markdown("---")
+        col_info, col_btn = st.columns([3, 1])
+        with col_info:
+            size_kb = len(uploaded_file.getvalue()) / 1024
+            st.markdown(f"**Plik:** `{uploaded_file.name}`")
+            st.markdown(f"**Rozmiar:** `{size_kb:.1f} KB`  |  **Wierszy:** `{len(df)}`")
+        with col_btn:
+            send = st.button("Wyślij", type="primary", width="stretch")
+
+        if send:
+            # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
+            schema_name= file_type
+            name, ext = os.path.splitext(uploaded_file.name)
+            file = f"{schema_name.lower()}/{name}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}"
+            up_data = uploaded_file.getvalue()
+            with st.spinner("Wysyłanie pliku do MinIO..."):
+                try:
+                    if not self.client.bucket_exists(bucket):
+                        self.client.make_bucket(st.session_state["name"], bucket)
+                        logger.info("Bucket created", extra={
+                            "user": _current_user(),
+                            "bucket": bucket,
+                        })
+
+                    result_msg = self.client.upload_file(
+                        st.session_state["name"],
+                        bucket,
+                        file,
+                        io.BytesIO(up_data),
+                        len(up_data),
+                        content_type="application/csv",
+                    )
+                    logger.info("File uploaded", extra={
+                        "user": _current_user(),
+                        "uploaded_file": file.split('/')[-1],
+                        "bucket": bucket,
+                    })
+                    st.success(result_msg)
+                    file_size_in_bytes = len(uploaded_file.getvalue())
+                    try:
+                        self._send_file_information_to_db(
+                            user_name=_current_user(),
+                            destination_table=file_type.lower(),
+                            file_name=file.split('/')[-1],
+                            number_of_rows=len(df),
+                            file_size=file_size_in_bytes,
+                            rejected_rows_count=0,
+                            inserted_rows_count=0,
+                            status='pending',
+                            error_message=''
+                        )
+                    except Exception as e:
+                        logger.error("Failed to send file information to database after upload", extra={
+                            "user": _current_user(),
+                            'application': 'StreamLit',
+                            'method': '_render_upload_section',
+                            "file_name":file.split('/')[-1],
+                            "error_type": type(e).__name__,
+                            "error": str(e),
+                        }, exc_info=True)
+                        raise
+                    time.sleep(2)
+                    st.session_state.uploaded_file_key += 1
+                    st.rerun()
+                except Exception as e:
+                    logger.error("Upload failed", extra={
+                        "user": _current_user(),
+                        "uploaded_file": file.split('/')[-1],
+                        "bucket": bucket,
+                        "error_type": type(e).__name__,
+                        "error": str(e),
+                    }, exc_info=True)
+                    st.error(f"Błąd podczas wysyłania: {e}")
+                    raise
+
+    def _show_user_history(self):
+        engine=create_engine(os.getenv("DATABASE_URL"))
+        query =text("""SELECT file_name, processed_at, status FROM etl_load_log_product WHERE user_name = :user_name ORDER BY
+            processed_at DESC""")
+        try:
+            with engine.connect() as conn:
+                    result = conn.execute(query, {"user_name": _current_user()})
+                    history = result.fetchall()
+                    conn.commit()
+        except Exception as e:
+            logger.error("Failed to fetch user upload history from database", extra={
+                "user": _current_user(),
+                'application': 'StreamLit',
+                'method': '_show_user_history',
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            st.error(f"Nie można pobrać historii przesłanych plików: {e}")
+            return []
+
+        if history:
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("📂 Historia plików")
+
+            PAGE_SIZE = 5
+            total_pages = max(1, (len(history) + PAGE_SIZE - 1) // PAGE_SIZE)
+
+            if "history_page" not in st.session_state:
+                st.session_state["history_page"] = 0
+
+            page = st.session_state["history_page"]
+            page_items = history[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+
+            for file_name, processed_at, status in page_items:
+                if status == "success":
+                    badge_color, label = "#28a745", "Sukces"
+                elif status == "error":
+                    badge_color, label = "#dc3545", "Błąd"
+                else:
+                    badge_color, label = "#ffc107", status or "Nieznany"
+                date_str = processed_at.strftime("%Y-%m-%d %H:%M") if processed_at else "—"
+                st.sidebar.markdown(
+                    f"""<div style="
+                        background:#1e1e2e;
+                        border-radius:8px;
+                        padding:8px 10px;
+                        margin-bottom:6px;
+                        border-left: 4px solid {badge_color};
+                    ">
+                        <div style="font-size:13px;font-weight:600;color:#e0e0e0;word-break:break-all">{file_name}</div>                                             
+                        <div style="font-size:11px;color:#aaa;margin-top:2px">{date_str}</div>
+                        <div style="margin-top:4px">
+                            <span style="
+                                background:{badge_color};
+                                color:#fff;
+                                font-size:10px;
+                                padding:2px 7px;
+                                border-radius:10px;
+                                font-weight:600;
+                            ">{label}</span>
+                        </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
+            col1, col2, col3 = st.sidebar.columns([1, 2, 1])
+            with col1:
+                if st.button("◀", disabled=page == 0, key="hist_prev"):
+                    st.session_state["history_page"] -= 1
+                    st.rerun()
+            with col2:
+                st.caption(f"{page + 1} / {total_pages}")
+            with col3:
+                if st.button("▶", disabled=page >= total_pages - 1, key="hist_next"):
+                    st.session_state["history_page"] += 1
+                    st.rerun()
+        else:
+            st.sidebar.markdown("---")
+            st.sidebar.caption("Nie przesłano jeszcze żadnych plików.")
+        
+
+#    id                   SERIAL PRIMARY KEY,
+#     user_id              VARCHAR(100),
+#     destination_table    VARCHAR(100) NOT NULL,
+#     file_name            VARCHAR(255) NOT NULL,
+#     number_of_rows       INT,
+#     file_size            BIGINT,
+#     rejected_rows_count  INT DEFAULT 0,
+#     inserted_rows_count  INT DEFAULT 0,
+#     created_by           VARCHAR(100),
+#     status               VARCHAR(50) CHECK (status IN ('success','partial_success', 'error', 'pending')),
+#     error_message        TEXT,
+#     processed_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    def _send_file_information_to_db(self, user_name:str, destination_table:str,
+                            file_name:str, number_of_rows:int, file_size:int,
+                            rejected_rows_count:int, inserted_rows_count:int,
+                            status:str, error_message:str):
+        '''
+        This method is responsible for send information to db about existing file,
+        which was send from streamlit app from specified user. Information is send to table etl_load_log_product, which is used for monitoring and tracking file uploads.
+        '''
+        try:
+            engine=create_engine(os.getenv('DATABASE_URL'))
+        except Exception as e:
+                logger.error("Database connection failed with send file information from streamlit", extra={
+                    'class': 'StreamlitApp',
+                    'method': '_send_file_information_to_db',
+                    "user": _current_user(),
+                    'application': 'StreamLit',
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
+
+        sql = text('''
+                INSERT INTO etl_load_log_product(
+                user_name, destination_table, file_name, number_of_rows, file_size,
+                rejected_rows_count, inserted_rows_count, status, error_message)
+                VALUES (:user_name, :destination_table, :file_name, :number_of_rows, :file_size,
+                :rejected_rows_count, :inserted_rows_count, :status, :error_message)
+        ''')
+
+        try:
+            with engine.connect() as conn:
+                conn.execute(sql, {
+                    "user_name": user_name,
+                    "destination_table": destination_table,
+                    "file_name": file_name,
+                    "number_of_rows": number_of_rows,
+                    "file_size": file_size,
+                    "rejected_rows_count": rejected_rows_count,
+                    "inserted_rows_count": inserted_rows_count,
+                    "status": status,
+                    "error_message": error_message
+                })
+                conn.commit()
+        except Exception as e:
+                logger.error("Failed to insert file information to database from streamlit", extra={
+                    'class': 'StreamlitApp',
+                    'method': '_send_file_information_to_db',
+                    "user": _current_user(),
+                    'application': 'StreamLit',
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                }, exc_info=True)
+                raise
+
+    def run(self, authenticator: Authenticate):
+        if st.session_state["authentication_status"]:
+            self._render_sidebar(authenticator)
+            # self._show_user_history()
+            with st.sidebar:
+                self._show_user_history()
+            st.title("Data Loader")
+            st.markdown("Wybierz temat i typ pliku, a następnie wgraj plik CSV.")
+            st.markdown("---")
+
+            st.subheader("Konfiguracja")
+            col1, col2 = st.columns(2)
+            with col1:
+                bucket = st.selectbox(
+                    "Temat",
+                    options=list(BUCKET_OPTIONS.keys()),
+                    format_func=lambda x: BUCKET_LABELS.get(x, x),
+                )
+            with col2:
+                file_type = st.selectbox(
+                    "Typ pliku",
+                    options=BUCKET_OPTIONS[bucket],
+                )
+
+            self._render_upload_section(bucket, file_type)
+
+        elif st.session_state["authentication_status"] is False:
+            st.error("Błędne dane logowania. Spróbuj ponownie.")
+
+        elif st.session_state["authentication_status"] is None:
+            st.info("Zaloguj się, aby kontynuować.")
+
+
+if __name__ == "__main__":
+    yaml_path = "config.yaml"
+
+    if "uploaded_file_key" not in st.session_state:
+        st.session_state.uploaded_file_key = 0
+
+    app = StreamlitApp()
+    yml_config = app.init_config(yaml_path)
+    authenticator = app.authentication(yml_config)
+    authenticator.login("main")
+
+    app.run(authenticator)
