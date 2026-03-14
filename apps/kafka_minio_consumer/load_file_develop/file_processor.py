@@ -1,4 +1,5 @@
 # language=PostgreSQL
+import time
 
 import pandas as pd
 import csv
@@ -13,7 +14,7 @@ import json
 from apps.kafka_minio_consumer.load_file_develop.product_schema import Segment, Sector, Department, Chief, PosInformation, Product, Contractor
 from apps.kafka_minio_consumer.load_file_develop.shops_schema import Site, SiteInfo, SiteFormat, SiteAddress, SiteContact
 load_dotenv()
-
+from apps.geo_coordinates.geo_coordinates import GeoCoordinates
 from apps.logger_config import get_logger
 
 T = TypeVar('T', bound=BaseModel)
@@ -1240,6 +1241,7 @@ class DataLoader:
 
     def _load_site_address(self, df: pd.DataFrame) -> int:
         source_file = self.path
+        geo_coordinates=GeoCoordinates(correlation_id=self.correlation_id)
 
         if df.empty:
             logger.warning("Data frame is empty", extra={
@@ -1303,6 +1305,39 @@ class DataLoader:
 
         codes = valid['site_unique_code'].unique().tolist()
 
+        def _find_coordinates(r):
+            address = r['site_address_complement']
+            x, y = geo_coordinates.get_coordinates(address)
+            time.sleep(1)
+            return pd.Series(
+                {
+                    'site_geo_coordinate_x_value': x,
+                    'site_geo_coordinate_y_value': y,
+                }
+            )
+
+        valid['site_address_complement'] = valid['site_address_city'] + ',' + valid['site_address_zip_code'] + ',' + \
+                                           valid['site_address_street']
+        try:
+            logger.info('Fetching geo coordinates for addresses', extra={
+                'class': 'GeoCoordinates',
+                'method': "get_coordinates",
+                "table": "site_address",
+                "source_file": source_file, })
+            coords = valid.apply(_find_coordinates, axis=1)
+            valid['site_geo_coordinate_x_value'] = coords['site_geo_coordinate_x_value']
+            valid['site_geo_coordinate_y_value'] = coords['site_geo_coordinate_y_value']
+        except Exception as e:
+            logger.error("Error fetching geo coordinates", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site_address",
+                "table": "site_address",
+                "source_file": source_file,
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            raise
+
         with self.engine.begin() as conn:
             try:
                 existing = conn.execute(check_sql, {"codes": codes}).fetchall()
@@ -1342,8 +1377,11 @@ class DataLoader:
                     if col not in valid.columns:
                         valid[col] = None
 
+
                 valid['is_current'] = True
                 valid['source_file'] = source_file
+
+
                 records = valid[['site_unique_code', 'site_address_zip_code', 'site_address_city', 'site_address_complement',
                                  'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value',
                                  'is_current', 'source_file']].to_dict(orient='records')
