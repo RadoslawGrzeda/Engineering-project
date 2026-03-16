@@ -1,6 +1,6 @@
 # language=PostgreSQL
 import time
-
+import re
 import pandas as pd
 import csv
 from typing import List, Tuple, Type, TypeVar
@@ -1279,13 +1279,21 @@ class DataLoader:
 
         # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
-            SELECT site_unique_code, site_address_zip_code, site_address_city, site_address_complement,
-                   city_code, country_code, site_geo_coordinate_x_value, site_geo_coordinate_y_value
+            SELECT site_unique_code, site_address_zip_code, site_address_city, site_address_street,
+                   city_code, country_code
             FROM site_address
             WHERE site_unique_code = ANY(:codes)
               AND is_current = True
             FOR UPDATE;
         ''')
+        # check_sql = text('''
+        #     SELECT site_unique_code, site_address_zip_code, site_address_city, site_address_street,
+        #            city_code, country_code, site_geo_coordinate_x_value, site_geo_coordinate_y_value
+        #     FROM site_address
+        #     WHERE site_unique_code = ANY(:codes)
+        #       AND is_current = True
+        #     FOR UPDATE;
+        # ''')
 
         update_sql = text('''
             UPDATE site_address
@@ -1295,10 +1303,10 @@ class DataLoader:
         ''')
 
         insert_sql = text('''
-            INSERT INTO site_address (site_unique_code, site_address_zip_code, site_address_city, site_address_complement,
+            INSERT INTO site_address (site_unique_code, site_address_zip_code, site_address_city, site_address_street,
                                       city_code, country_code, site_geo_coordinate_x_value, site_geo_coordinate_y_value,
                                       is_current, source_file)
-            VALUES (:site_unique_code, :site_address_zip_code, :site_address_city, :site_address_complement,
+            VALUES (:site_unique_code, :site_address_zip_code, :site_address_city, :site_address_street,
                     :city_code, :country_code, :site_geo_coordinate_x_value, :site_geo_coordinate_y_value,
                     :is_current, :source_file)
         ''')
@@ -1316,8 +1324,19 @@ class DataLoader:
                 }
             )
 
-        valid['site_address_complement'] = valid['site_address_city'] + ',' + valid['site_address_zip_code'] + ',' + \
-                                           valid['site_address_street']
+        # valid['site_address_complement'] = re.sub(r"ul. (.)", valid['site_address_street']) +','+valid['site_address_zip_code']+','+valid['site_address_city']
+        street_no_prefix = valid["site_address_street"].str.replace(r"^\s*ul\.\s*", "", regex=True)
+
+        valid["site_address_complement"] = (
+                street_no_prefix.astype(str)
+                + ","
+                + valid["site_address_zip_code"].astype(str)
+                + ","
+                + valid["site_address_city"].astype(str)
+        )
+
+        # valid['site_address_complement'] = valid['site_address_city'] + ',' + valid['site_address_zip_code'] + ',' + \
+        #                                    valid['site_address_street']
         try:
             logger.info('Fetching geo coordinates for addresses', extra={
                 'class': 'GeoCoordinates',
@@ -1343,8 +1362,11 @@ class DataLoader:
                 existing = conn.execute(check_sql, {"codes": codes}).fetchall()
                 current_data = {
                     row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]),
-                             str(row[5]), str(row[6]), str(row[7]))
+                             str(row[5]))
                     for row in existing
+                    # row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]),
+                    #          str(row[5]), str(row[6]), str(row[7]))
+                    # for row in existing
                 }
 
                 def _address_changed(r):
@@ -1354,11 +1376,11 @@ class DataLoader:
                     return current_data[key] != (
                         str(r.get('site_address_zip_code', '')),
                         str(r.get('site_address_city', '')),
-                        str(r.get('site_address_complement', '')),
+                        str(r.get('site_address_street', '')),
                         str(r.get('city_code', '')),
-                        str(r.get('country_code', '')),
-                        str(r.get('site_geo_coordinate_x_value', '')),
-                        str(r.get('site_geo_coordinate_y_value', '')),
+                        str(r.get('country_code', ''))
+                        # str(r.get('site_geo_coordinate_x_value', '')),
+                        # str(r.get('site_geo_coordinate_y_value', '')),
                     )
 
                 valid = valid[valid.apply(_address_changed, axis=1)].copy()
@@ -1372,7 +1394,7 @@ class DataLoader:
                     })
                     return 0
 
-                for col in ['site_address_zip_code', 'site_address_city', 'site_address_complement',
+                for col in ['site_address_zip_code', 'site_address_city', 'site_address_street',
                             'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value']:
                     if col not in valid.columns:
                         valid[col] = None
@@ -1382,7 +1404,7 @@ class DataLoader:
                 valid['source_file'] = source_file
 
 
-                records = valid[['site_unique_code', 'site_address_zip_code', 'site_address_city', 'site_address_complement',
+                records = valid[['site_unique_code', 'site_address_zip_code', 'site_address_city', 'site_address_street',
                                  'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value',
                                  'is_current', 'source_file']].to_dict(orient='records')
 
