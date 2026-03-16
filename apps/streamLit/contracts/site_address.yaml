@@ -23,7 +23,7 @@ columns:
   - name: site_address_city
     type: string
     nullable: false
-  - name: site_address_complement
+  - name: site_address_street
     type: string
     nullable: false
   - name: city_code
@@ -32,9 +32,3 @@ columns:
   - name: country_code
     type: string
     nullable: false
-  - name: site_geo_coordinate_x_value
-    type: float
-    nullable: true
-  - name: site_geo_coordinate_y_value
-    type: float
-    nullable: true
