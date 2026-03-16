@@ -155,8 +155,9 @@ class KafkaMinioConsumer:
             # self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
                 len_of_load=process_data.load_to_db(data, schema)
-
-                if errors or len_of_load==0:
+                if len_of_load == 0:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', error_message=str(errors), engine=self.db_engine, correlation_id=cid)
+                elif errors:
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=self.db_engine, correlation_id=cid)
                 elif len_of_load < len(df):
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=self.db_engine, correlation_id=cid)
