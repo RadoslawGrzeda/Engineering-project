@@ -2,7 +2,8 @@ import pydantic
 from pydantic import BaseModel, Field, field_validator,model_validator
 import re
 from datetime import date
-from typing import Optional
+from typing import Optional, Any
+import math
 
 
 class Site(BaseModel):
@@ -49,6 +50,26 @@ class SiteInfo(BaseModel):
     def validate_site_unique_code(cls, v):
         if not re.match(r'^PL[0-9]{3}$', v):
             raise ValueError(f"Invalid site unique code format: {v}")
+        return v
+
+    @field_validator('site_status_code')
+    @classmethod
+    def validate_site_status_code(cls, v):
+        if v not in ('ACTIVE','CLOSED'):
+            raise ValueError(f"Invalid site status code: {v}")
+        return v
+
+    @field_validator('site_opening_date', 'site_closing_date', 'valid_from', 'valid_to', mode='before')
+    @classmethod
+    def allow_nan_as_none(cls, v: Any) -> Any:
+        if isinstance(v, float) and math.isnan(v):
+            return None
+
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ('nan', 'none', ''):
+                return None
+
         return v
 
 class SiteFormat(BaseModel):
