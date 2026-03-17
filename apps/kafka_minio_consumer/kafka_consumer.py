@@ -31,7 +31,7 @@ class KafkaMinioConsumer:
             self.consumer = KafkaConsumer(
                                     bootstrap_servers=[self.bootstrap_servers],
                                     group_id=self.group_id,
-                                    auto_offset_reset='earliest',
+                                    auto_offset_reset='latest',
                                     enable_auto_commit=False,
                                     auto_commit_interval_ms=5000,
                                     session_timeout_ms=30000,
