@@ -1010,6 +1010,18 @@ class DataLoader:
                 "error": str(e),
             }, exc_info=True)
             raise
+    def _get_existing_site_codes_from_info(self) -> set[str]:
+        try:
+            with self.engine.begin() as conn:
+                rows = conn.execute(text('SELECT site_unique_code FROM site_info'))
+                return set(row[0] for row in rows)
+        except Exception as e:
+            logger.error("Error fetching existing site codes", extra={
+                "class": self.__class__.__name__,
+                "method": "_get_existing_site_codes_from_info",
+                "error_type": type(e).__name__,
+                "error": str(e),
+            },exc_info=True)
 
     def _load_site_info(self, df: pd.DataFrame) -> int:
         source_file = self.path
@@ -1058,12 +1070,12 @@ class DataLoader:
         update_sql = text('''
             UPDATE site_info
             SET is_current = False,
-                last_updated_at= CURRENT_TIMESTAMP,
+                updated_at= CURRENT_TIMESTAMP,
                 site_closing_date=CURRENT_TIMESTAMP
             WHERE site_unique_code = :site_unique_code
               AND is_current = True
-              AND site_status_code = 'ACTIVE'
         ''')
+              # AND site_status_code = 'ACTIVE'
 
         insert_sql = text('''
             INSERT INTO site_info (site_unique_code, site_status_code, site_opening_date, site_closing_date,
@@ -1104,7 +1116,7 @@ class DataLoader:
                 if 'site_opening_date' in valid.columns and valid['site_opening_date'].notna().any():
                     valid['site_opening_date'] = valid['site_opening_date']
                 else:
-                    valid['site_opening_date'] = datetime.date.today()
+                    valid['site_opening_date'] = valid['site_opening_date'].fillna(datetime.date.today())
 
                 # valid['valid_to'] = None
                 # valid.loc[~is_active, 'valid_to'] = datetime.date.today()
@@ -1205,8 +1217,7 @@ class DataLoader:
         update_sql = text('''
             UPDATE site_format
             SET is_current = False,
-                valid_to = current_date,
-                last_updated_at = CURRENT_TIMESTAMP
+                valid_to = current_date
             WHERE site_unique_code = :site_unique_code
               AND is_current = True;
         ''')
