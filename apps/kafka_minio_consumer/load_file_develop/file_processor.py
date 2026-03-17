@@ -1581,8 +1581,7 @@ class DataLoader:
         close_primary_sql = text('''
             UPDATE site_contact
             SET is_primary = False,
-                valid_to = current_date,
-                last_updated_at = CURRENT_TIMESTAMP
+                valid_to = current_date
             WHERE site_unique_code = :site_unique_code
               AND contact_type = :contact_type
               AND contact_role = :contact_role
