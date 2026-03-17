@@ -5,7 +5,6 @@ from datetime import date
 from typing import Optional
 
 
-
 class Site(BaseModel):
     site_unique_code: str = Field(...)
     site_code: str = Field(...)
@@ -18,6 +17,10 @@ class Site(BaseModel):
             raise ValueError(f"Invalid site unique code format: {v}")
         return v
 
+    @field_validator('site_code',mode='before')
+    @classmethod
+    def cast_to_string(cls, v):
+        return str(v)
 
 class SiteInfo(BaseModel):
     site_unique_code: str = Field(...)
