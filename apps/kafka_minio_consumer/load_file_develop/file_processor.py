@@ -898,6 +898,13 @@ class DataLoader:
     '''
     methods for loading site tables
     '''
+    def _get_existing_site_code(self):
+        with self.engine.begin() as conn:
+            sql = text('''
+            select site_unique_code, site_code from site''')
+            site_codes = conn.execute(sql).fetchall()
+            return {row.site_code: row.site_unique_code  for row in site_codes}
+
     def _load_site(self, df: pd.DataFrame) -> None:
         source_file=self.path
 
@@ -910,6 +917,42 @@ class DataLoader:
             })
             raise ValueError("No site records to load: DataFrame is empty")
 
+        existing_site_code = self._get_existing_site_code()
+        df['site_code']=df['site_code'].astype(str).str.zfill(3)
+
+
+        def _valid_row(row):
+            s_code = row['site_code']
+            u_code = row['site_unique_code']
+
+            if s_code in existing_site_code:
+                if existing_site_code[s_code] != u_code:
+                    return False
+            return True
+
+        mask_valid=df.apply(_valid_row, axis=1)
+        valid=df[mask_valid].copy()
+        invalid=df[~mask_valid].copy()
+
+        if not invalid.empty:
+            logger.warning("Site code used with another site, skipped record because of that", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site",
+                "table": "site",
+                "skipped_count": len(invalid),
+                "source_file": self.path
+            })
+
+        if valid.empty:
+            logger.warning("No valid site records to insert", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_site",
+                "table": "site",
+                "skipped_count": len(invalid),
+                "source_file": self.path
+
+            })
+
         sql = text('''
                     INSERT INTO site (site_unique_code, site_code, site_name, created_at, updated_at, source_file)
                     VALUES (:site_unique_code, :site_code, :site_name, :created_at, :updated_at, :source_file)
@@ -919,11 +962,12 @@ class DataLoader:
                         updated_at = EXCLUDED.updated_at,
                         source_file = EXCLUDED.source_file;
                     ''')
-        df_site=df.copy()
+        df_site=valid.copy()
         df_site['created_at']=datetime.datetime.now()
         df_site['updated_at']=datetime.datetime.now()
         df_site['source_file']=source_file
-        records=df_site.to_dict(orient='records')
+        df_site.sort_values(by=['site_unique_code'], inplace=True)
+        records=df_site.to_dict('records')
 
         with self.engine.begin() as conn:
             try:
@@ -1003,7 +1047,6 @@ class DataLoader:
             })
             return 0
 
-        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
             SELECT site_unique_code, site_status_code
             FROM site_info
@@ -1015,16 +1058,18 @@ class DataLoader:
         update_sql = text('''
             UPDATE site_info
             SET is_current = False,
-                valid_to = current_date
+                last_updated_at= CURRENT_TIMESTAMP,
+                site_closing_date=CURRENT_TIMESTAMP
             WHERE site_unique_code = :site_unique_code
-              AND is_current = True;
+              AND is_current = True
+              AND site_status_code = 'ACTIVE'
         ''')
 
         insert_sql = text('''
             INSERT INTO site_info (site_unique_code, site_status_code, site_opening_date, site_closing_date,
-                                   is_current, valid_from, valid_to, source_file)
+                                   is_current, source_file)
             VALUES (:site_unique_code, :site_status_code, :site_opening_date, :site_closing_date,
-                    :is_current, :valid_from, :valid_to, :source_file)
+                    :is_current, :source_file)
         ''')
 
         codes = valid['site_unique_code'].unique().tolist()
@@ -1049,10 +1094,10 @@ class DataLoader:
                     })
                     return 0
 
-                if 'valid_from' in valid.columns and valid['valid_from'].notna().any():
-                    pass
-                else:
-                    valid['valid_from'] = datetime.date.today()
+                # if 'valid_from' in valid.columns and valid['valid_from'].notna().any():
+                #     pass
+                # else:
+                #     valid['valid_from'] = datetime.date.today()
 
                 is_active = valid['site_status_code'] == "ACTIVE"
 
@@ -1061,8 +1106,8 @@ class DataLoader:
                 else:
                     valid['site_opening_date'] = datetime.date.today()
 
-                valid['valid_to'] = None
-                valid.loc[~is_active, 'valid_to'] = datetime.date.today()
+                # valid['valid_to'] = None
+                # valid.loc[~is_active, 'valid_to'] = datetime.date.today()
 
                 if 'site_closing_date' not in valid.columns:
                     valid['site_closing_date'] = None
@@ -1072,7 +1117,7 @@ class DataLoader:
                 valid['is_current'] = True
                 valid['source_file'] = source_file
                 records = valid[['site_unique_code', 'site_status_code', 'site_opening_date', 'site_closing_date',
-                                 'is_current', 'valid_from', 'valid_to', 'source_file']].to_dict(orient='records')
+                                 'is_current',  'source_file']].to_dict(orient='records')
 
                 update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
 
@@ -1149,7 +1194,6 @@ class DataLoader:
             })
             return 0
 
-        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
             SELECT site_unique_code, site_format_unique_code
             FROM site_format
@@ -1161,19 +1205,20 @@ class DataLoader:
         update_sql = text('''
             UPDATE site_format
             SET is_current = False,
-                valid_to = current_date
+                valid_to = current_date,
+                last_updated_at = CURRENT_TIMESTAMP
             WHERE site_unique_code = :site_unique_code
               AND is_current = True;
         ''')
 
         insert_sql = text('''
-            INSERT INTO site_format (site_unique_code, site_format_unique_code, is_current, valid_from, valid_to, source_file)
-            VALUES (:site_unique_code, :site_format_unique_code, :is_current, :valid_from, :valid_to, :source_file)
+            INSERT INTO site_format (site_unique_code, site_format_unique_code, is_current, valid_from, valid_to,created_at, source_file)
+            VALUES (:site_unique_code, :site_format_unique_code, :is_current, :valid_from, :valid_to, :created_at, :source_file)
         ''')
 
         codes = valid['site_unique_code'].unique().tolist()
 
-        with self.engine.begin() as conn:
+        with (self.engine.begin() as conn):
             try:
                 existing = conn.execute(check_sql, {"codes": codes}).fetchall()
                 current_data = {row[0]: row[1] for row in existing}
@@ -1194,15 +1239,16 @@ class DataLoader:
                     return 0
 
                 if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
-                    valid['valid_from'] = datetime.date.today()
+                    valid['valid_from'] = datetime.datetime.now()
                 valid['valid_to'] = None
                 valid['is_current'] = True
                 valid['source_file'] = source_file
+                valid['created_at'] = datetime.datetime.now()
                 records = valid[['site_unique_code', 'site_format_unique_code', 'is_current', 'valid_from',
-                                 'valid_to', 'source_file']].to_dict(orient='records')
+                                 'valid_to','created_at', 'source_file']].to_dict(orient='records')
 
+                valid['last_updated_at'] = datetime.datetime.now()
                 update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
-
                 if update_records:
                     logger.info("Closing outdated site_format records", extra={
                         'class': self.__class__.__name__,
@@ -1277,7 +1323,6 @@ class DataLoader:
             })
             return 0
 
-        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
         check_sql = text('''
             SELECT site_unique_code, site_address_zip_code, site_address_city, site_address_street,
                    city_code, country_code
@@ -1483,19 +1528,54 @@ class DataLoader:
             })
             return 0
 
-        # SELECT z FOR UPDATE + compare + UPDATE + INSERT w jednej transakcji
+        if 'valid_from' not in valid.columns:
+            valid['valid_from'] = datetime.date.today()
+        else:
+            valid['valid_from'] = valid['valid_from'].fillna(datetime.date.today())
+
+        user_defined_primary = (
+            'is_primary' in valid.columns
+            and valid['is_primary'].notna().any()
+        )
+
+        if user_defined_primary:
+            valid['is_primary'] = valid['is_primary'].fillna(False)
+            primary_rows = valid[valid['is_primary'] == True]
+            primary_dups = primary_rows.duplicated(
+                subset=['site_unique_code', 'contact_type', 'contact_role'], keep='first'
+            )
+            if primary_dups.any():
+                logger.warning("Multiple is_primary=True for same (site, type, role), keeping first", extra={
+                    'class': self.__class__.__name__,
+                    'method': "_load_site_contact",
+                    "table": "site_contact",
+                    "conflicts": int(primary_dups.sum()),
+                    "source_file": source_file,
+                })
+                valid.loc[primary_rows[primary_dups].index, 'is_primary'] = False
+        else:
+            valid['is_primary'] = False
+            valid = valid.sort_values('valid_from', ascending=True, na_position='last')
+            newest_idx = valid.groupby(['site_unique_code', 'contact_type', 'contact_role'])['valid_from'].idxmax()
+            valid.loc[newest_idx, 'is_primary'] = True
+
         check_sql = text('''
-            SELECT site_unique_code, contact_type, contact_value, contact_role, is_primary
+            SELECT site_unique_code, contact_type, contact_value, contact_role
             FROM site_contact
             WHERE site_unique_code = ANY(:codes)
               AND valid_to IS NULL
             FOR UPDATE;
         ''')
 
-        update_sql = text('''
+        close_primary_sql = text('''
             UPDATE site_contact
-            SET valid_to = current_date
+            SET is_primary = False,
+                valid_to = current_date,
+                last_updated_at = CURRENT_TIMESTAMP
             WHERE site_unique_code = :site_unique_code
+              AND contact_type = :contact_type
+              AND contact_role = :contact_role
+              AND is_primary = True
               AND valid_to IS NULL;
         ''')
 
@@ -1511,26 +1591,20 @@ class DataLoader:
         with self.engine.begin() as conn:
             try:
                 existing = conn.execute(check_sql, {"codes": codes}).fetchall()
-                current_data = {
-                    row[0]: (str(row[1]), str(row[2]), str(row[3]), str(row[4]))
+                existing_contacts = {
+                    (str(row[0]), str(row[1]), str(row[3]), str(row[2]))
                     for row in existing
                 }
 
-                def _contact_changed(r):
-                    key = r['site_unique_code']
-                    if key not in current_data:
-                        return True
-                    return current_data[key] != (
-                        str(r.get('contact_type', '')),
-                        str(r.get('contact_value', '')),
-                        str(r.get('contact_role', '')),
-                        str(r.get('is_primary', '')),
-                    )
+                def _is_new_contact(r):
+                    key = (str(r['site_unique_code']), str(r['contact_type']),
+                           str(r['contact_role']), str(r['contact_value']))
+                    return key not in existing_contacts
 
-                valid = valid[valid.apply(_contact_changed, axis=1)].copy()
+                valid = valid[valid.apply(_is_new_contact, axis=1)].copy()
 
                 if valid.empty:
-                    logger.info("No contact changes detected, skipping insert", extra={
+                    logger.info("No new contacts to insert, skipping", extra={
                         'class': self.__class__.__name__,
                         'method': "_load_site_contact",
                         "table": "site_contact",
@@ -1538,28 +1612,41 @@ class DataLoader:
                     })
                     return 0
 
-                if 'valid_from' not in valid.columns or not valid['valid_from'].notna().any():
-                    valid['valid_from'] = datetime.date.today()
-                valid['valid_to'] = None
-                if 'contact_role' not in valid.columns:
-                    valid['contact_role'] = None
-                if 'is_primary' not in valid.columns:
+                if user_defined_primary:
+                    primary_rows = valid[valid['is_primary'] == True]
+                    primary_dups = primary_rows.duplicated(
+                        subset=['site_unique_code', 'contact_type', 'contact_role'], keep='first'
+                    )
+                    if primary_dups.any():
+                        valid.loc[primary_rows[primary_dups].index, 'is_primary'] = False
+                else:
                     valid['is_primary'] = False
+                    newest_idx = valid.groupby(['site_unique_code', 'contact_type', 'contact_role'])['valid_from'].idxmax()
+                    valid.loc[newest_idx, 'is_primary'] = True
+
+                valid['valid_to'] = None
+                valid.loc[valid['is_primary'] == False, 'valid_to'] = datetime.date.today()
+
+                if 'contact_role' not in valid.columns:
+                    valid['contact_role'] = 'SUPPORT'
+
                 valid['source_file'] = source_file
-                records = valid[['site_unique_code', 'contact_type', 'contact_value', 'contact_role',
-                                 'valid_from', 'valid_to', 'is_primary', 'source_file']].to_dict(orient='records')
 
-                update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
+                primary_new = valid[valid['is_primary'] == True]
+                close_records = primary_new[['site_unique_code', 'contact_type', 'contact_role']].drop_duplicates().to_dict(orient='records')
 
-                if update_records:
-                    logger.info("Closing outdated site_contact records", extra={
+                if close_records:
+                    logger.info("Closing previous primary contacts", extra={
                         'class': self.__class__.__name__,
                         'method': "_load_site_contact",
                         "table": "site_contact",
-                        "records_count": len(update_records),
+                        "records_count": len(close_records),
                         "source_file": source_file,
                     })
-                    conn.execute(update_sql, update_records)
+                    conn.execute(close_primary_sql, close_records)
+
+                records = valid[['site_unique_code', 'contact_type', 'contact_value', 'contact_role',
+                                 'valid_from', 'valid_to', 'is_primary', 'source_file']].to_dict(orient='records')
 
                 logger.info("Inserting records", extra={
                     'class': self.__class__.__name__,
