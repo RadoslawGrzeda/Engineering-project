@@ -1,8 +1,9 @@
 import pydantic
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator,model_validator
 import re
 from datetime import date
 from typing import Optional
+
 
 
 class Site(BaseModel):
@@ -90,6 +91,30 @@ class SiteContact(BaseModel):
     valid_from: Optional[date] = Field(None)
     valid_to: Optional[date] = Field(None)
     is_primary: Optional[bool] = Field(None)
+
+    @field_validator('contact_type')
+    @classmethod
+    def validate_contact_type(cls, v):
+        if v not in ('EMAIL', 'PHONE', 'FAX'):
+            raise ValueError(f"Invalid contact type: {v}")
+        return v
+
+    @model_validator(mode='after')
+    def validate_contact_value_format(self):
+        if self.contact_type == 'EMAIL':
+            if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', self.contact_value):
+                raise ValueError(f"Invalid email format: {self.contact_value}")
+        elif self.contact_type in ('PHONE', 'FAX'):
+            if not re.match(r'^\+?\d[\d\s\-]{6,}$', self.contact_value):
+                raise ValueError(f"Invalid phone/fax format: {self.contact_value}")
+        return self
+
+    @field_validator('contact_role')
+    @classmethod
+    def validate_contact_role(cls, v):
+        if v not in ('MANAGER', 'SUPPORT', 'SALES'):
+            raise ValueError(f"Invalid contact role: {v}")
+        return v
 
     @field_validator('site_unique_code')
     @classmethod
