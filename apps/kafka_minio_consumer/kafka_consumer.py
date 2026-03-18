@@ -1,3 +1,4 @@
+from minio.commonconfig import CopySource
 from pandas import errors
 from kafka import KafkaConsumer
 import json
@@ -76,9 +77,9 @@ class KafkaMinioConsumer:
     #         self.logger.info("POST request sent successfully to API for file '%s' in bucket '%s'", file_key.split('/')[-1], bucket_name, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
     #     except requests.exceptions.RequestException as e:
     #         self.logger.error("Error sending POST request to API: %s", e, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
-    def  _load_file_from_minio(self, bucket_name, file_key):
+    def  _load_file_from_minio(self, bucket_name:str, file_key:str) -> pd.DataFrame:
         '''
-        This method is responsible for load file from minio 
+        This method is responsible for load file from minio and return it for next processing steps
         '''
         try:
             response = self.minio.get_object(bucket_name, file_key)
@@ -106,7 +107,25 @@ class KafkaMinioConsumer:
             if response:
                 response.close()
                 response.release_conn()
-    
+
+    def _archive_file_in_minio(self, bucket_destination:str, bucket_source: str, file_key: str) -> None :
+        '''
+        This method is responsible for archiving file from minio after successfully processing the file
+        '''
+        try:
+            self.minio.copy_object(bucket_destination,file_key,CopySource(bucket_source,file_key))
+            self.minio.remove_object(bucket_source,file_key)
+
+        except Exception as e:
+            self.logger.error("Error archiving file: %s", e, extra={
+                'class': 'KafkaMinioConsumer',
+                'method': "_archive_file_in_minio",
+                'bucket_destination': bucket_destination,
+                'bucket_source': bucket_source,
+                'file_key': file_key,
+
+            },exc_info=True)
+
     def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None,engine=None, correlation_id=None):
             sql = text('''
                 UPDATE etl_load_log_product
@@ -204,13 +223,15 @@ class KafkaMinioConsumer:
                         schema = file_key.split("/")[0]
 
                         self.logger.info("Received event for file '%s' in bucket '%s'", file_name, bucket_name,
-                                         extra={'class': 'KafkaMinioConsumer', 'method': 'consume_messages',
-                                                'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
+                                        extra={'class': 'KafkaMinioConsumer', 'method': 'consume_messages',
+                                        'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema}
+                                        )
 
                         df = self._load_file_from_minio(bucket_name, file_key)
                         self._validate_and_load_to_db(df, schema, file_key, cid=cid)
 
                         retry_counts.pop(msg_key, None)
+                        self._archive_file_in_minio('archive',bucket_name, file_key)
                         self.consumer.commit()
 
                     except Exception as e:
