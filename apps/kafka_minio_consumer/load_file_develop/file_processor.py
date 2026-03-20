@@ -270,6 +270,13 @@ class DataLoader:
                 "invalid_sector_ids": invalid['sector_id'].unique().tolist(),
                 "source_file": source_file,
             })
+        dead_letter_rows = []
+        for idx, row in invalid.iterrows():
+            reasons = []
+            reasons.append(f"sector_id={row['sector_id']} not found in sector table")
+            dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+
+        self.load_to_dead_letter(dead_letter_rows, "department")
 
         with self.engine.begin() as conn:
             try:
@@ -373,6 +380,12 @@ class DataLoader:
                 "invalid_sector_ids": invalid['sector_id'].unique().tolist(),
                 "source_file": source_file,
             })
+            dead_letter_rows = []
+            for idx, row in invalid.iterrows():
+                reasons = []
+                reasons.append(f"sector_id={row['sector_id']} not found in sector table")
+                dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+            self.load_to_dead_letter(dead_letter_rows, "segment")
 
         with self.engine.begin() as conn:
             try:
@@ -704,6 +717,20 @@ class DataLoader:
 
         existing_art_keys = self._get_existing_art_keys()
         valid = df[df["art_key"].isin(existing_art_keys)].copy()
+        invalid = df[~df["art_key"].isin(existing_art_keys)].copy()
+
+        if not invalid.empty:
+            logger.warning("Rows skipped due to missing art_key in product table", extra={
+                'class': self.__class__.__name__,
+                'method': "_load_pos_information",
+                "table": "pos_information",
+                "skipped_count": len(invalid),
+                "source_file": self.path,
+            })
+            dead_letter_rows = []
+            for idx, row in invalid.iterrows():
+                dead_letter_rows.append((idx, row.to_dict(), f"art_key={row['art_key']} not found in product table"))
+            self.load_to_dead_letter(dead_letter_rows, "pos_information")
 
         if valid.empty:
             logger.info("pos_information: no valid art_keys found.")
@@ -970,6 +997,13 @@ class DataLoader:
                 "skipped_count": len(invalid),
                 "source_file": self.path
             })
+        dead_letter_rows = []
+        for idx, row in invalid.iterrows():
+            reasons = []
+            reasons.append(f"Site code {row['site_code']} used with another site")
+            dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+
+        self.load_to_dead_letter(dead_letter_rows, "site")
 
         if valid.empty:
             logger.warning("No valid site records to insert", extra={
@@ -1077,6 +1111,12 @@ class DataLoader:
                 "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
                 "source_file": source_file,
             })
+        dead_letter_rows = []
+        for idx, row in invalid.iterrows():
+            reasons = []
+            reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
+            dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+        self.load_to_dead_letter(dead_letter_rows, "site_info")
 
         if valid.empty:
             logger.warning("No valid site_info records to insert", extra={
@@ -1224,6 +1264,13 @@ class DataLoader:
                 "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
                 "source_file": source_file,
             })
+        dead_letter_rows = []
+        for idx, row in invalid.iterrows():
+            reasons = []
+            reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
+            dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+
+        self.load_to_dead_letter(dead_letter_rows, "site_format")
 
         if valid.empty:
             logger.warning("No valid site_format records to insert", extra={
@@ -1352,6 +1399,14 @@ class DataLoader:
                 "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
                 "source_file": source_file,
             })
+        dead_letter_rows = []
+        for idx, row in invalid.iterrows():
+            reasons = []
+            reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
+            dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+
+        self.load_to_dead_letter(dead_letter_rows, "site_address")
+
 
         if valid.empty:
             logger.warning("No valid site_address records to insert", extra={
@@ -1557,6 +1612,13 @@ class DataLoader:
                 "invalid_site_codes": invalid['site_unique_code'].unique().tolist(),
                 "source_file": source_file,
             })
+        dead_letter_rows = []
+        for idx, row in invalid.iterrows():
+            reasons = []
+            reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
+            dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+
+        self.load_to_dead_letter(dead_letter_rows, "site_contact")
 
         if valid.empty:
             logger.warning("No valid site_contact records to insert", extra={
