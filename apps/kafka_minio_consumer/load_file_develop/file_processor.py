@@ -168,8 +168,11 @@ class DataLoader:
                     ON CONFLICT (sector_id) DO UPDATE SET
                     sector_name = EXCLUDED.sector_name,
                     sector_code = EXCLUDED.sector_code,
-                    source_file = EXCLUDED.source_file;''')
-                    
+                    source_file = EXCLUDED.source_file,
+                    updated_at = CURRENT_TIMESTAMP;
+''')
+
+        df['updated_at']=datetime.datetime.now()
         records=df.to_dict(orient='records')
         records = [{**record, "source_file": source_file} for record in records]
 
@@ -249,10 +252,12 @@ class DataLoader:
                     ON CONFLICT (department_id) DO UPDATE SET
                         department_name = EXCLUDED.department_name,
                         sector_id = EXCLUDED.sector_id,
-                        source_file = EXCLUDED.source_file;
+                        source_file = EXCLUDED.source_file,
+                        updated_at = CURRENT_TIMESTAMP;
+                        
                     """)
         
-
+        df['updated_at']=datetime.datetime.now()
         records=valid.to_dict(orient='records')
         records = [{**record, "source_file": source_file} for record in records]
 
@@ -318,7 +323,8 @@ class DataLoader:
                         segment_code = EXCLUDED.segment_code,
                         segment_name = EXCLUDED.segment_name,
                         sector_id = EXCLUDED.sector_id,
-                        source_file = EXCLUDED.source_file;
+                        source_file = EXCLUDED.source_file,
+                        updated_at = CURRENT_TIMESTAMP;
                     """)
 
         update_sql=text(f'''
@@ -333,24 +339,28 @@ class DataLoader:
 
         insert_relation_sql = text(f'''
                                 INSERT INTO segment_chief (segment_id, chief_id, is_current, valid_from, valid_to, source_file)
-                                VALUES (:segment_id, :chief_id, :is_current, :valid_from, :valid_to, :source_file)
-                                ON CONFLICT (segment_id, chief_id) DO UPDATE SET
-                                is_current = True,
-                                valid_from = current_date,
-                                valid_to = NULL,
-                                source_file = EXCLUDED.source_file;
-                                
+                                SELECT :segment_id, :chief_id, :is_current, :valid_from, :valid_to, :source_file
+                                WHERE NOT EXISTS (
+                                    SELECT 1 FROM segment_chief
+                                    WHERE segment_id = :segment_id
+                                    AND chief_id = :chief_id
+                                    AND is_current = True
+                                );
                                 ''')
-        updateRecords=valid.copy().to_dict(orient='records')
+        updateRecords=valid.copy()
         source_file=self.path
-        for record in updateRecords:
-            record['source_file']=source_file
-            record['valid_from']=datetime.date(2023,1,1)
-            record['valid_to']=None
-            record['is_current']=True
+        updateRecords['source_file']=source_file
+        updateRecords['valid_from']=datetime.date(2023,1,1)
+        updateRecords['valid_to']=None
+        updateRecords['is_current']=True
+        updateRecords['created_at']=datetime.datetime.now()
+        updateRecords['updated_at']=datetime.datetime.now()
 
+        updateRecords=updateRecords.to_dict('records')
 
+        valid['updated_at']=datetime.datetime.now()
         records=valid.copy().to_dict(orient='records')
+
         for record in records:
             record['source_file']=source_file
 
@@ -505,14 +515,16 @@ class DataLoader:
             ON CONFLICT (contractor_id,contract_number) DO UPDATE SET
             signed_date = EXCLUDED.signed_date,
             status = EXCLUDED.status,
-            valid_from = EXCLUDED.valid_from
+            valid_from = EXCLUDED.valid_from,
+            updated_at = EXCLUDED.updated_at;
             ''')
+
         contractor_df=df[['contractor_id', 'contractor_name', 'contractor_phone_number', 'contractor_email_address', 'contractor_address']]
         
         contractor_df=contractor_df.to_dict(orient='records')
         for record in contractor_df:    
-            record['created_at']=datetime.date.today()
-            record['updated_at']=datetime.date.today()
+            record['created_at']=datetime.datetime.now()
+            record['updated_at']=datetime.datetime.now()
             record['source_file']=source_file    
 
         if 'contract_number' in df.columns:
@@ -526,6 +538,8 @@ class DataLoader:
             insert_df['valid_from']=datetime.datetime.now()
             insert_df['valid_to']=None
             insert_df['source_file']=source_file
+            insert_df['updated_at']=datetime.datetime.now()
+            insert_df['created_at']=datetime.date.today()
 
             insert_df=insert_df.to_dict(orient='records')
             update_contract_df=update_contract_df.to_dict(orient='records')
@@ -805,9 +819,9 @@ class DataLoader:
 
         sql = text("""
                    INSERT INTO product (art_key, art_number, contractor_id, segment_id, department_id,
-                                        brand, article_codification_date, last_modified_at, source_file)
+                                        brand, article_codification_date,created_at,updated_at, source_file)
                    VALUES (:art_key, :art_number, :contractor_id, :segment_id, :department_id,
-                           :brand, :article_codification_date, :last_modified_at, :source_file)
+                           :brand, :article_codification_date,:created_at, :updated_at, :source_file)
                    ON CONFLICT (art_key) DO UPDATE SET
                      art_number = EXCLUDED.art_number,
                         contractor_id = EXCLUDED.contractor_id,
@@ -815,7 +829,7 @@ class DataLoader:
                         department_id = EXCLUDED.department_id,
                         brand = EXCLUDED.brand,
                         article_codification_date = EXCLUDED.article_codification_date,
-                        last_modified_at = EXCLUDED.last_modified_at,
+                        updated_at = EXCLUDED.updated_at,
                         source_file = EXCLUDED.source_file;
                    """)
 
@@ -842,6 +856,19 @@ class DataLoader:
                 "skipped_count": len(invalid),
                 "source_file": self.path
             })
+            dead_letter_rows = []
+            for idx, row in invalid.iterrows():
+                reasons = []
+                if row["contractor_id"] not in existing_contractors:
+                    reasons.append(f"contractor_id={row['contractor_id']} not found")
+                if row["segment_id"] not in existing_segments:
+                    reasons.append(f"segment_id={row['segment_id']} not found")
+                if row["departament_id"] not in existing_departments:
+                    reasons.append(f"department_id={row['departament_id']} not found")
+                dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
+
+            self.load_to_dead_letter(dead_letter_rows, "product")
+
         if valid.empty:
             logger.warning("No valid product records to insert", extra={
                 'class': self.__class__.__name__,
@@ -864,9 +891,10 @@ class DataLoader:
         ].copy()
         valid["department_id"] = valid["departament_id"]
         valid["source_file"] = self.path
-        valid["last_modified_at"] = datetime.datetime.now()
+        valid["updated_at"] = datetime.datetime.now()
+        valid["created_at"] = datetime.datetime.now()
         records = valid[["art_key", "art_number", "contractor_id", "segment_id", "department_id", "brand",
-                         "article_codification_date", "last_modified_at", "source_file"]].to_dict(orient="records")
+                         "article_codification_date","created_at", "updated_at", "source_file"]].to_dict(orient="records")
 
         with self.engine.begin() as conn:
             try:
