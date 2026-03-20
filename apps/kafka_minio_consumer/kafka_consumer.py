@@ -81,6 +81,7 @@ class KafkaMinioConsumer:
         '''
         This method is responsible for load file from minio and return it for next processing steps
         '''
+        response = None
         try:
             response = self.minio.get_object(bucket_name, file_key)
             buffer=io.BytesIO(response.read())
@@ -229,10 +230,10 @@ class KafkaMinioConsumer:
 
                         df = self._load_file_from_minio(bucket_name, file_key)
                         self._validate_and_load_to_db(df, schema, file_key, cid=cid)
+                        self.consumer.commit()
 
                         retry_counts.pop(msg_key, None)
                         self._archive_file_in_minio('archive',bucket_name, file_key)
-                        self.consumer.commit()
 
                     except Exception as e:
                         retries = retry_counts.get(msg_key, 0) + 1
