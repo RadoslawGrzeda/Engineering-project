@@ -46,6 +46,7 @@ class DataLoader:
         self.engine = engine or sa.create_engine(self.connection_string)
 
     def validate_shape(self, schema_name: str):
+        t = time.perf_counter()
         shape=SCHEMA_MAP[schema_name]
         records: List[T] = []
         errors: List[Tuple[int, dict, str]] = []
@@ -69,12 +70,12 @@ class DataLoader:
                     }, exc_info=True)
         except Exception as e:
             logger.error("Failed to read file", extra={
-                # "file_path": self.path,
                 "class": self.__class__.__name__,
                 "method": "validate_shape",
                 "file_path": self.path,
                 "error_type": type(e).__name__,
                 "error": str(e),
+                "duration_ms": round((time.perf_counter() - t) * 1000, 2),
             })
             raise
 
@@ -85,6 +86,7 @@ class DataLoader:
             "total_rows_read": line_no - 1,
             "valid_records": len(records),
             "invalid_records": len(errors),
+            "duration_ms": round((time.perf_counter() - t) * 1000, 2),
         })
 
         if errors:
@@ -120,6 +122,7 @@ class DataLoader:
         return handler_map[table_name](df)
 
     def load_to_dead_letter(self, row_data:List[Tuple[int, dict, str]], source_table):
+        t = time.perf_counter()
         try:
             sql = text('''
                 INSERT INTO dead_letter (source_table, source_file, raw_row, error_details, line_no, correlation_id)
@@ -143,6 +146,7 @@ class DataLoader:
                         "records_count": len(records),
                         "source_file": self.path,
                         "source_table": source_table,
+                        "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                     })
                     conn.execute(sql, records)
                 except Exception as e:
@@ -150,6 +154,7 @@ class DataLoader:
                         'class': self.__class__.__name__,
                         'method': "load_to_dead_letter",
                         "table": "dead_letter",
+                        "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                     }, exc_info=True)
         except Exception as e:
             logger.error("Failed to load to dead letter", extra={
@@ -157,10 +162,12 @@ class DataLoader:
                 "row_data": row_data,
                 "error_type": type(e).__name__,
                 "error": str(e),
+                "duration_ms": round((time.perf_counter() - t) * 1000, 2),
             }, exc_info=True)
             raise
 
     def _load_sector(self, df: pd.DataFrame) -> None:
+        t = time.perf_counter()
         source_file=self.path
         sql=text(f'''
                     INSERT INTO sector (sector_id, sector_name, sector_code,source_file)
@@ -200,6 +207,7 @@ class DataLoader:
                     "method": "_load_sector",
                     "table": "sector",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -210,6 +218,7 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
@@ -229,6 +238,7 @@ class DataLoader:
             raise
 
     def _load_department(self, df: pd.DataFrame) -> None:
+        t = time.perf_counter()
         source_file=self.path
 
         if df.empty:
@@ -293,6 +303,7 @@ class DataLoader:
                     "method": "_load_department",
                     "table": "department",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -303,11 +314,13 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
 
     def _load_segment(self, df:pd.DataFrame) -> None:
+        t = time.perf_counter()
         source_file=self.path
         
         if df.empty:
@@ -419,6 +432,7 @@ class DataLoader:
                     "method": "_load_segment",
                     "table": "segment",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -429,11 +443,13 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
 
     def _load_chief(self, df: pd.DataFrame) -> None:
+        t = time.perf_counter()
         source_file=self.path
 
         if df.empty:
@@ -476,6 +492,7 @@ class DataLoader:
                     "method": "_load_chief",
                     "table": "chief",
                     "records_count": len(record),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(record)
             except Exception as e:
@@ -486,11 +503,13 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
     
     def _load_contractor(self, df: pd.DataFrame) -> None:
+        t = time.perf_counter()
         source_file=self.path
         sql = text(f'''
         INSERT INTO contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email_address, contractor_address, source_file, created_at,updated_at)
@@ -592,6 +611,7 @@ class DataLoader:
                     'method': "_load_contractor",
                     "table": "contractor",
                     "records_count": len(contractor_df),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(contractor_df)
             except Exception as e:
@@ -602,6 +622,7 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
@@ -687,7 +708,7 @@ class DataLoader:
 
     def _load_pos_information(self, df: pd.DataFrame) -> None:
         """Wstawia tylko wiersze nowe lub ze zmienioną ceną. Ten sam (art_key, ean) i ta sama cena = pomijamy."""
-
+        t = time.perf_counter()
         source_file=self.path
         if df.empty:
             logger.warning("Data frame is empty", extra={
@@ -700,18 +721,18 @@ class DataLoader:
 
         update_sql = text('''
             UPDATE pos_information
-            SET date_end = :date_end,
+            SET valid_to = :valid_to,
                 is_current = :is_current,
-                last_modified_date = :last_modified_date,
+                updated_at = :updated_at,
                 source_file = :source_file
-            WHERE art_key = :art_key AND ean = :ean AND date_end IS NULL
+            WHERE art_key = :art_key AND ean = :ean AND valid_to IS NULL
         ''')
 
         insert_sql = text('''
             INSERT INTO pos_information (art_key, ean, vat_rate, price_net, price_gross,
-                                        date_start, last_modified_date, source_file, is_current)
-            VALUES (:art_key, :ean, :vat_rate, :price_net, :price_gross, :date_start,
-                    :last_modified_date, :source_file, :is_current)
+                                        valid_from, created_at, updated_at, source_file, is_current)
+            VALUES (:art_key, :ean, :vat_rate, :price_net, :price_gross, :valid_from, :created_at,
+                    :updated_at, :source_file, :is_current)
             
         ''')
 
@@ -740,7 +761,7 @@ class DataLoader:
         # Zapobiega race condition gdy dwa pliki przetwarzają ten sam art_key równocześnie
         lock_sql = text(
             "SELECT art_key, ean, price_net, price_gross, vat_rate "
-            "FROM pos_information WHERE date_end IS NULL AND art_key = ANY(:keys) "
+            "FROM pos_information WHERE valid_to IS NULL AND art_key = ANY(:keys) "
             "FOR UPDATE"
         )
 
@@ -775,18 +796,19 @@ class DataLoader:
                     return 0
 
                 to_insert = to_insert.copy()
-                to_insert["date_start"] = datetime.date(2023, 1, 1)
+                to_insert["valid_from"] = datetime.date(2023, 1, 1)
                 to_insert["source_file"] = source_file
-                to_insert["last_modified_date"] = datetime.datetime.now()
-                to_insert["date_end"] = None
+                to_insert["updated_at"] = datetime.datetime.now()
+                to_insert["valid_to"] = None
                 to_insert["is_current"] = True
+                to_insert['created_at'] = datetime.datetime.now()
                 valid_df = to_insert.to_dict(orient="records")
 
                 update_df = to_insert[["art_key", "ean"]].drop_duplicates()
                 update_df["source_file"] = source_file
-                update_df["date_end"] = datetime.date.today()
+                update_df["valid_to"] = datetime.date.today()
                 update_df["is_current"] = False
-                update_df["last_modified_date"] = datetime.datetime.now()
+                update_df["updated_at"] = datetime.datetime.now()
                 update_rows = update_df.to_dict(orient="records")
 
                 if update_rows:
@@ -813,6 +835,7 @@ class DataLoader:
                     "table": "pos_information",
                     "records_count": len(valid_df),
                     "source_file": source_file,
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(valid_df)
             except Exception as e:
@@ -823,6 +846,7 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
             
@@ -833,6 +857,7 @@ class DataLoader:
         contractor_id, segment_id, department_id, brand, article_codification_date,
         last_modified_at, source_file. Validates FK to contractor, segment, department.
         """
+        t = time.perf_counter()
         source_file=self.path
         if df.empty:
             logger.warning("No product records to load", extra={
@@ -846,9 +871,9 @@ class DataLoader:
 
         sql = text("""
                    INSERT INTO product (art_key, art_number, contractor_id, segment_id, department_id,
-                                        brand, article_codification_date,created_at,updated_at, source_file)
+                                        brand, article_codification_date, created_at, updated_at, source_file)
                    VALUES (:art_key, :art_number, :contractor_id, :segment_id, :department_id,
-                           :brand, :article_codification_date,:created_at, :updated_at, :source_file)
+                           :brand, :article_codification_date, :created_at, :updated_at, :source_file)
                    ON CONFLICT (art_key) DO UPDATE SET
                      art_number = EXCLUDED.art_number,
                         contractor_id = EXCLUDED.contractor_id,
@@ -938,6 +963,7 @@ class DataLoader:
                     'method': "_load_product",
                     "table": "product",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -948,6 +974,7 @@ class DataLoader:
                     "source_file": self.path,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
     '''
@@ -961,6 +988,7 @@ class DataLoader:
             return {row.site_code: row.site_unique_code  for row in site_codes}
 
     def _load_site(self, df: pd.DataFrame) -> None:
+        t = time.perf_counter()
         source_file=self.path
 
         if df.empty:
@@ -1046,6 +1074,7 @@ class DataLoader:
                     'method': "_load_site",
                     "table": "site",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -1056,6 +1085,7 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
     
@@ -1086,6 +1116,7 @@ class DataLoader:
             },exc_info=True)
 
     def _load_site_info(self, df: pd.DataFrame) -> int:
+        t = time.perf_counter()
         source_file = self.path
         if df.empty:
             logger.warning("Data frame is empty", extra={
@@ -1224,6 +1255,7 @@ class DataLoader:
                     'method': "_load_site_info",
                     "table": "site_info",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -1234,10 +1266,12 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
     def _load_site_format(self, df: pd.DataFrame) -> int:
+        t = time.perf_counter()
         source_file = self.path
 
         if df.empty:
@@ -1358,6 +1392,7 @@ class DataLoader:
                     'method': "_load_site_format",
                     "table": "site_format",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -1368,10 +1403,12 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
     def _load_site_address(self, df: pd.DataFrame) -> int:
+        t = time.perf_counter()
         source_file = self.path
         geo_coordinates=GeoCoordinates(correlation_id=self.correlation_id)
 
@@ -1493,6 +1530,7 @@ class DataLoader:
                 "source_file": source_file,
                 "error_type": type(e).__name__,
                 "error": str(e),
+                "duration_ms": round((time.perf_counter() - t) * 1000, 2),
             }, exc_info=True)
             raise
 
@@ -1572,6 +1610,7 @@ class DataLoader:
                     'method': "_load_site_address",
                     "table": "site_address",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -1582,10 +1621,12 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise
 
     def _load_site_contact(self, df: pd.DataFrame) -> int:
+        t = time.perf_counter()
         source_file = self.path
 
         if df.empty:
@@ -1761,6 +1802,7 @@ class DataLoader:
                     'method': "_load_site_contact",
                     "table": "site_contact",
                     "records_count": len(records),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
                 return len(records)
             except Exception as e:
@@ -1771,5 +1813,6 @@ class DataLoader:
                     "source_file": source_file,
                     "error_type": type(e).__name__,
                     "error": str(e),
+                    "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 }, exc_info=True)
                 raise

@@ -1,7 +1,8 @@
 from minio.commonconfig import CopySource
 from pandas import errors
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, OffsetAndMetadata, TopicPartition
 import json
+import time
 import requests
 from urllib.parse import unquote
 import os
@@ -82,6 +83,7 @@ class KafkaMinioConsumer:
         This method is responsible for load file from minio and return it for next processing steps
         '''
         response = None
+        t = time.perf_counter()
         try:
             response = self.minio.get_object(bucket_name, file_key)
             buffer=io.BytesIO(response.read())
@@ -93,7 +95,8 @@ class KafkaMinioConsumer:
                                 'class': 'KafkaMinioConsumer',
                                 'method': "_load_file_from_minio",
                                 'file_key': file_key,
-                                'bucket_name': bucket_name
+                                'bucket_name': bucket_name,
+                                'duration_ms': round((time.perf_counter() - t) * 1000, 2),
                             })
             return df
         except Exception as e:
@@ -101,7 +104,8 @@ class KafkaMinioConsumer:
                 'class': 'KafkaMinioConsumer',
                 'method': "_load_file_from_minio",
                 'file_key': file_key,
-                'bucket_name': bucket_name
+                'bucket_name': bucket_name,
+                'duration_ms': round((time.perf_counter() - t) * 1000, 2),
             })
             raise
         finally:
@@ -113,10 +117,17 @@ class KafkaMinioConsumer:
         '''
         This method is responsible for archiving file from minio after successfully processing the file
         '''
+        t = time.perf_counter()
         try:
             self.minio.copy_object(bucket_destination,file_key,CopySource(bucket_source,file_key))
             self.minio.remove_object(bucket_source,file_key)
-
+            self.logger.info("File archived successfully", extra={
+                'class': 'KafkaMinioConsumer',
+                'method': "_archive_file_in_minio",
+                'file_key': file_key,
+                'bucket_destination': bucket_destination,
+                'duration_ms': round((time.perf_counter() - t) * 1000, 2),
+            })
         except Exception as e:
             self.logger.error("Error archiving file: %s", e, extra={
                 'class': 'KafkaMinioConsumer',
@@ -124,7 +135,7 @@ class KafkaMinioConsumer:
                 'bucket_destination': bucket_destination,
                 'bucket_source': bucket_source,
                 'file_key': file_key,
-
+                'duration_ms': round((time.perf_counter() - t) * 1000, 2),
             },exc_info=True)
 
     def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None,engine=None, correlation_id=None):
@@ -210,6 +221,7 @@ class KafkaMinioConsumer:
                     file_key = bucket_name = schema = None
 
                     try:
+                        t0 = time.perf_counter()
                         event = json.loads(msg.value.decode('utf-8'))
                         record = event['Records'][0]
 
@@ -230,10 +242,16 @@ class KafkaMinioConsumer:
 
                         df = self._load_file_from_minio(bucket_name, file_key)
                         self._validate_and_load_to_db(df, schema, file_key, cid=cid)
-                        self.consumer.commit()
+                        self.consumer.commit({tp: OffsetAndMetadata(msg.offset + 1, None)})
 
                         retry_counts.pop(msg_key, None)
                         self._archive_file_in_minio('archive',bucket_name, file_key)
+
+                        self.logger.info("Total processing completed for file '%s'", file_name,
+                                        extra={'class': 'KafkaMinioConsumer', 'method': 'consume_messages',
+                                        'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema,
+                                        'duration_ms': round((time.perf_counter() - t0) * 1000, 2)}
+                                        )
 
                     except Exception as e:
                         retries = retry_counts.get(msg_key, 0) + 1
@@ -254,7 +272,7 @@ class KafkaMinioConsumer:
                                     'offset': msg.offset,
                                 }, exc_info=True)
                             retry_counts.pop(msg_key, None)
-                            self.consumer.commit()
+                            self.consumer.commit({tp: OffsetAndMetadata(msg.offset + 1, None)})
                         else:
                             self.logger.warning(
                                 "Error processing message (retry %d/%d): %s",
@@ -269,6 +287,7 @@ class KafkaMinioConsumer:
                                     'partition': tp.partition,
                                     'offset': msg.offset,
                                 }, exc_info=True)
+                            break
 
 if __name__ == "__main__":
     consumer = KafkaMinioConsumer()
