@@ -56,7 +56,7 @@ ACCOUNT_INDICATOR_TYPES = [
 ]
 
 
-class CrmGenerator:
+class PersonGenerator:
     def __init__(self):
         self.fake = Faker("pl_PL")
 

@@ -1,5 +1,6 @@
 from minio import Minio
 from dotenv import load_dotenv
+import time
 import os
 import sys
 load_dotenv()
@@ -19,6 +20,7 @@ class MinioClient:
         )
     
     def upload_file(self, client_name : str, bucket_name : str, file_name:str, file_data:bytes, length:int, content_type:str, correlation_id:str):
+        t = time.perf_counter()
         try:
             self.client.put_object(bucket_name,file_name,file_data,length,content_type,metadata={'correlation_id':correlation_id})
             logger.info("File uploaded to MinIO", extra={
@@ -26,6 +28,7 @@ class MinioClient:
                 "bucket": bucket_name,
                 "class": "MinioClient",
                 "method": "upload_file",
+                "duration_ms": round((time.perf_counter() - t) * 1000, 2),
             })
         except Exception as e:
             logger.error("Error uploading file to MinIO", extra={
@@ -35,6 +38,7 @@ class MinioClient:
                 "method": "upload_file",
                 "error_type": type(e).__name__,
                 "error": str(e),
+                "duration_ms": round((time.perf_counter() - t) * 1000, 2),
             }, exc_info=True)
             raise
     def make_bucket(self,client_name:str,bucket_name:str):
