@@ -115,6 +115,7 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
     Returns a result dict with keys:
       valid, missing, extra, nullable_errors, type_errors
     """
+    t = time.perf_counter()
     result: dict[str, Any] = {
         "valid": True,
         "missing": [],
@@ -157,6 +158,7 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
             'method': 'validate_against_contract',
             "user": _current_user(),
             "valid_records": len(df),
+            "duration_ms": round((time.perf_counter() - t) * 1000, 2),
         })
     else:
         logger.warning("Contract validation failed", extra={
@@ -167,6 +169,7 @@ def validate_against_contract(df: pd.DataFrame, contract: dict) -> dict[str, Any
             "extra_cols": result["extra"],
             "nullable_errors": result["nullable_errors"],
             "type_errors": result["type_errors"],
+            "duration_ms": round((time.perf_counter() - t) * 1000, 2),
         })
 
     return result
@@ -325,6 +328,7 @@ class Streamlit:
             send = st.button("Wyślij", type="primary", width="stretch")
 
         if send:
+            t_upload = time.perf_counter()
             # filename = f"{datetime.now().strftime('%Y%m%d')}_{uploaded_file.name}"
             schema_name= file_type
             name, ext = os.path.splitext(uploaded_file.name)
@@ -370,6 +374,7 @@ class Streamlit:
                             "file_name": file.split('/')[-1],
                             "destination_table": file_type.lower(),
                             "status": "pending",
+                            "duration_ms": round((time.perf_counter() - t_upload) * 1000, 2),
                         })
                     except Exception as e:
                         logger.error("Failed to send file information to database after upload", extra={

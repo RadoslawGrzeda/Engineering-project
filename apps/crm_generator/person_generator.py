@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, date
 from random import randint, choice, uniform
-
+import uuid
 from faker import Faker
 
 
@@ -23,7 +23,7 @@ COUNTRIES = [
     {"country_code": "DE", "country_name": "Germany"},
     {"country_code": "CZ", "country_name": "Czech Republic"},
     {"country_code": "SK", "country_name": "Slovakia"},
-    {"country_code": "UA", "country_name": "Ucraine"},
+    {"country_code": "UA", "country_name": "Ukraine"},
     {"country_code": "LT", "country_name": "Lithuania"},
 ]
 
@@ -66,7 +66,8 @@ class PersonGenerator:
         gender = "F" if first_name.lower().endswith("a") else "M"
         person_id = str(uuid.uuid4())[:8]
         registration_date = self.fake.date_between(start_date="-5y", end_date="today")
-
+        country_code = choice(COUNTRIES)["country_code"] if randint(0, 100) > 75 else 'Poland';
+        country = choice(COUNTRIES) if randint(0, 100) > 75 else COUNTRIES[0]
         return {
             "person_id": person_id,
             # "person_ty": choice(["fizyczna", "prawna"]) if randint(0, 100) > 95 else "fizyczna",
@@ -75,6 +76,8 @@ class PersonGenerator:
             "middle_name": (self.fake.first_name_female() if gender == "F" else self.fake.first_name_male()) if randint(0, 100) > 95 else None,
             "birth_date": self.fake.date_of_birth(minimum_age=15, maximum_age=90).isoformat(),
             "gender_code": gender,
+            'country_code':country['country_code'],
+            'country_name': country['country_name'],
             "civil_status": choice(CIVIL_STATUSES)["civil"] if randint(0, 100) > 95 else None,
             "passport_number": self.fake.bothify("??#######").upper() if randint(0, 100) > 95 else None,
             "registration_date": registration_date.isoformat(),
@@ -301,6 +304,6 @@ class PersonGenerator:
 
 
 if __name__ == "__main__":
-    crm = CrmGenerator()
+    crm = PersonGenerator()
     customer = crm.generate_customer()
     print(json.dumps(customer, indent=2, ensure_ascii=False))
