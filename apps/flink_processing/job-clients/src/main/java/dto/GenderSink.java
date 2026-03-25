@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 public class GenderSink implements JdbcStatementBuilder<Client> {
 
-    public static final String SQL =  "INSERT INTO client.gender (person_id, gender_code, gender_name, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?)";
+    public static final String SQL =  "INSERT INTO client.gender (person_id, gender_code, gender_name, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?,?)";
     @Override
     public void accept(PreparedStatement preparedStatement, Client client) throws SQLException {
                 preparedStatement.setString(1, client.getPersonId());
