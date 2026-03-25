@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  jobmanager:
+    image: flink:1.20.3-java17
+    container_name: flink-jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: 1600m
+    volumes:
+      - ../apps/flink_processing/job-clients/target:/opt/flink/usrlib/clients
+      - ../apps/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
+    networks:
+      - traefik_network
+
+  taskmanager:
+    image: flink:1.20.3-java17
+    container_name: flink-taskmanager
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.memory.process.size: 1728m
+        taskmanager.numberOfTaskSlots: 2
+    volumes:
+      - ../apps/flink_processing/job-clients/target:/opt/flink/usrlib/clients
+      - ../apps/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
+    networks:
+      - traefik_network
+
+networks:
+  traefik_network:
+    external: true
