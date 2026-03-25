@@ -113,6 +113,43 @@ public class ClientProcessingJob {
                         FlinkJdbcConfig.connOption()
                 ));
 
+        /**
+         * Insert into the communication_subscription table
+         */
+        validClientStream.flatMap(
+                (Client client, org.apache.flink.util.Collector<Client.CommunicationSubscription> collector) -> {
+                    if (client.getCommunicationSubscriptions() != null)
+                        for (Client.CommunicationSubscription comm : client.getCommunicationSubscriptions()) {
+                            comm.setPersonId(client.getPersonId());
+                            comm.setCorrelation_id(client.getAccount().getCorrelation_id());
+                            collector.collect(comm);
+                        }
+                }).returns(Client.CommunicationSubscription.class).addSink(JdbcSink.sink(
+                        CommunicationSubscriptionSink.SQL,
+                        new CommunicationSubscriptionSink(),
+                        FlinkJdbcConfig.execOption(),
+                        FlinkJdbcConfig.connOption()
+                )
+        );
+
+        validClientStream.flatMap(
+                (Client client, org.apache.flink.util.Collector<Client.AddressChannel> collector) -> {
+                    if (client.getAddressChannels() != null)
+                        for (Client.AddressChannel addressChannel : client.getAddressChannels()) {
+                            addressChannel.setPersonId(client.getPersonId());
+                            addressChannel.setCorrelation_id(client.getAccount().getCorrelation_id());
+                            collector.collect(addressChannel);
+                        }
+                }).returns(Client.AddressChannel.class).addSink(JdbcSink.sink(
+                        AddressChannelSink.SQL,
+                        new AddressChannelSink(),
+                        FlinkJdbcConfig.execOption(),
+                        FlinkJdbcConfig.connOption()
+                )
+        );
+
+
+
         clientStream.print();
 
         env.execute("Client Processing Job");
