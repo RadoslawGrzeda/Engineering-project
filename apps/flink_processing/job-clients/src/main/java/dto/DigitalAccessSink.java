@@ -2,6 +2,7 @@ package dto;
 
 import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -17,7 +18,7 @@ preparedStatement.setString(2, client.getDigitalAccess().getUsername());
 preparedStatement.setString(3, client.getDigitalAccess().getEmailUser());
 preparedStatement.setBoolean(4, client.getDigitalAccess().getIsActive());
 preparedStatement.setTimestamp(5, Timestamp.valueOf(client.getDigitalAccess().getLastLoginDate()));
-preparedStatement.setTimestamp(6, Timestamp.valueOf(client.getDigitalAccess().getPortalUserConfirmationDate()));
+preparedStatement.setTimestamp(6, client.getDigitalAccess().getPortalUserConfirmationDate() != null ? Timestamp.valueOf(client.getDigitalAccess().getPortalUserConfirmationDate()) : null);
 preparedStatement.setTimestamp(7, Timestamp.valueOf(LocalDateTime.now()));
 preparedStatement.setTimestamp(8, Timestamp.valueOf(LocalDateTime.now()));
 preparedStatement.setString(9, client.getAccount().getCorrelation_id());

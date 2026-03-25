@@ -319,7 +319,9 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
     private static LocalDate parseDate(String date) {
         if (isBlank(date)) return null;
         try {
-            return LocalDate.parse(date);
+            // Handle both "yyyy-MM-dd" and "yyyy-MM-dd HH:mm:ss" formats
+            String datePart = date.contains(" ") ? date.split(" ")[0] : date;
+            return LocalDate.parse(datePart);
         } catch (DateTimeParseException e) {
             return null;
         }

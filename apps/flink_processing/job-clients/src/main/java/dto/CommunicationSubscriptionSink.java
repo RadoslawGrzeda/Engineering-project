@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 public class CommunicationSubscriptionSink implements JdbcStatementBuilder<Client.CommunicationSubscription> {
     public static final String SQL = "INSERT INTO client.communication_subscription (person_id, community_code, community_value, date_of_subscription," +
                                     " date_of_unsubscription, reason_of_unsubscription, created_at, updated_at, correlation_id)" +
-                                    " VALUES (?, ?, ?, ?, ?, ?, ?)";
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     @Override
     public void accept(PreparedStatement preparedStatement, Client.CommunicationSubscription comm) throws SQLException {

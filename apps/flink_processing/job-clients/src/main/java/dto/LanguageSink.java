@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 public class LanguageSink implements JdbcStatementBuilder<Client.Language> {
 
-    public static final String SQL = "INSERT INTO language (person_id, language_code, language_name, language_level, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?)";
+    public static final String SQL = "INSERT INTO client.language (person_id, language_code, language_name, language_level, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?,?,?)";
 
     @Override
     public void accept(PreparedStatement preparedStatement, Client.Language language) throws SQLException {
