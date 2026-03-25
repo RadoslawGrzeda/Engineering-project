@@ -1,6 +1,7 @@
 import deserializer.ClientDeserializer;
 import dto.*;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.connector.jdbc.JdbcSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
@@ -38,12 +39,15 @@ public class ClientProcessingJob {
             if ( client.getLanguages() != null) {
             for (Client.Language lang : client.getLanguages()) {
                         lang.setPersonId(client.getPersonId());
+                        lang.setCorrelation_id(client.getAccount().getCorrelation_id());
                         collector.collect(lang);
                     }
                 }}
         ).returns(Client.Language.class);
 
-
+        /**
+         * Insert into the account table
+         */
         validClientStream.addSink(JdbcSink.sink(
                 AccountSink.SQL,
                 new AccountSink(),
@@ -69,6 +73,46 @@ public class ClientProcessingJob {
                 FlinkJdbcConfig.execOption(),
                 FlinkJdbcConfig.connOption()
         ));
+        validClientStream.flatMap((Client client, org.apache.flink.util.Collector<Client> collector) -> {
+            if (client.getAccount().getCivilStatus() != null) {
+                collector.collect(client);
+            }
+        }).returns(Client.class).addSink(JdbcSink.sink(
+                CivilSink.SQL,
+                new CivilSink(),
+                FlinkJdbcConfig.execOption(),
+                FlinkJdbcConfig.connOption()
+        ));
+
+        validClientStream.flatMap((Client client, org.apache.flink.util.Collector<Client> collector) -> {
+        if (client.getDigitalAccess() != null) {
+            collector.collect(client);
+        }}).returns(Client.class).addSink(JdbcSink.sink(
+                DigitalAccessSink.SQL,
+                new DigitalAccessSink(),
+                FlinkJdbcConfig.execOption(),
+                FlinkJdbcConfig.connOption()
+        ));
+
+        /**
+         * Insert into the contact channel table
+         */
+        validClientStream.flatMap((
+                Client client, org.apache.flink.util.Collector<Client.ContactChannel> collector) -> {
+                if (client.getContactChannels() != null)
+                    for (Client.ContactChannel contactChannel : client.getContactChannels()){
+                        contactChannel.setPersonId(client.getPersonId());
+                        contactChannel.setCorrelation_id(client.getAccount().getCorrelation_id());
+                        collector.collect(contactChannel);
+                    }
+                }
+                ).returns(Client.ContactChannel.class).addSink(JdbcSink.sink(
+                        ContactChannelSink.SQL,
+                        new ContactChannelSink(),
+                        FlinkJdbcConfig.execOption(),
+                        FlinkJdbcConfig.connOption()
+                ));
+
         clientStream.print();
 
         env.execute("Client Processing Job");
