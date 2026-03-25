@@ -1,10 +1,6 @@
-import Deserializer.ClientDeserializer;
-import Dto.Client;
-import Dto.LanguageSink;
+import deserializer.ClientDeserializer;
+import dto.*;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
-import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
 import org.apache.flink.connector.jdbc.JdbcSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
@@ -12,9 +8,6 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import Dto.AccountSink;
-
-import java.util.stream.Collector;
 
 public class ClientProcessingJob {
 
@@ -38,17 +31,20 @@ public class ClientProcessingJob {
                                                         WatermarkStrategy.noWatermarks(),
                                                         "Kafka Source");
 
-        DataStream<Client.Language> languageStream = clientStream.flatMap(
+        DataStream<Client> validClientStream= clientStream.flatMap(new ClientValidator());
+
+        DataStream<Client.Language> languageStream = validClientStream.flatMap(
         (Client client, org.apache.flink.util.Collector<Client.Language> collector) -> {
-                    for (Client.Language lang : client.getLanguages()) {
+            if ( client.getLanguages() != null) {
+            for (Client.Language lang : client.getLanguages()) {
                         lang.setPersonId(client.getPersonId());
                         collector.collect(lang);
                     }
-                }
+                }}
         ).returns(Client.Language.class);
 
 
-        clientStream.addSink(JdbcSink.sink(
+        validClientStream.addSink(JdbcSink.sink(
                 AccountSink.SQL,
                 new AccountSink(),
                 FlinkJdbcConfig.execOption(),
@@ -61,7 +57,18 @@ public class ClientProcessingJob {
                 FlinkJdbcConfig.execOption(),
                 FlinkJdbcConfig.connOption()
         ));
-
+        validClientStream.addSink(JdbcSink.sink(
+                GenderSink.SQL,
+                new GenderSink(),
+                FlinkJdbcConfig.execOption(),
+                FlinkJdbcConfig.connOption()
+        ));
+        validClientStream.addSink(JdbcSink.sink(
+                CountriesSink.SQL,
+                new CountriesSink(),
+                FlinkJdbcConfig.execOption(),
+                FlinkJdbcConfig.connOption()
+        ));
         clientStream.print();
 
         env.execute("Client Processing Job");
