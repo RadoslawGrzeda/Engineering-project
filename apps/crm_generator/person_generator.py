@@ -5,6 +5,7 @@ from random import randint, choice, uniform
 import uuid
 from faker import Faker
 
+from apps.logger_config import correlation_id
 
 GENDERS = [
     {"gender_code": "M", "gender_name": "Male"},
@@ -282,6 +283,7 @@ class PersonGenerator:
         ]
 
     def generate_customer(self):
+        correlation_id.set(str(uuid.uuid4())[:8])
         account = self._generate_account()
         person_id = account["person_id"]
         registration_date = account["registration_date"]
@@ -292,6 +294,7 @@ class PersonGenerator:
         email = next((ch["value"] for ch in contact_channels if ch["channel_type"] == "email"), None)
 
         return {
+            "correlation_id": correlation_id.get(),
             "account": account,
             "loyalty": self._generate_loyalty(person_id, registration_date),
             "address_channels": [self._generate_address_channel(person_id)],
