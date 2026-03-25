@@ -35,6 +35,9 @@ public class Client implements Serializable {
     public Account getAccount() { return account; }
     public void setAccount(Account account) { this.account = account; }
 
+//    @JsonProperty("correlation_id")
+//    private String correlation_id;
+
     public Loyalty getLoyalty() { return loyalty; }
     public void setLoyalty(Loyalty loyalty) { this.loyalty = loyalty; }
 
@@ -59,8 +62,11 @@ public class Client implements Serializable {
     public String getPersonId() {
         return account != null ? account.getPersonId() : null;
     }
-
-    @Override
+//        @JsonProperty("correlation_id")
+//        private String correlation_id;
+//
+//    public String getCorrelationId() { return correlation_id; }
+//    public void setCorrelationId(String correlation_id) { this.correlation_id = correlation_id; }
     public String toString() {
         return "Client{personId=" + getPersonId()
                 + ", name=" + (account != null ? account.getFirstName() + " " + account.getLastName() : "null")
@@ -94,6 +100,8 @@ public class Client implements Serializable {
         private Date registrationDate;
         @JsonProperty("creation_application")
         private String creationApplication;
+        @JsonProperty("correlation_id")
+        private String correlation_id;
 
         public String getPersonId() { return personId; }
         public void setPersonId(String personId) { this.personId = personId; }
@@ -130,6 +138,14 @@ public class Client implements Serializable {
 
         public void setCountryCode(String countryCode) {
             this.countryCode = countryCode;
+        }
+
+        public String getCorrelation_id() {
+            return correlation_id;
+        }
+
+        public void setCorrelation_id(String correlation_id) {
+            this.correlation_id = correlation_id;
         }
     }
 
@@ -189,6 +205,9 @@ public class Client implements Serializable {
         private String lastModifiedDate;
         @JsonProperty("is_deleted")
         private Boolean isDeleted;
+        @JsonProperty("correlation_id")
+        private String correlation_id;
+
 
         public String getChannelId() { return channelId; }
         public void setChannelId(String channelId) { this.channelId = channelId; }
@@ -220,6 +239,14 @@ public class Client implements Serializable {
         public void setLastModifiedDate(String lastModifiedDate) { this.lastModifiedDate = lastModifiedDate; }
         public Boolean getIsDeleted() { return isDeleted; }
         public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
+
+        public String getCorrelation_id() {
+            return correlation_id;
+        }
+
+        public void setCorrelation_id(String correlation_id) {
+            this.correlation_id = correlation_id;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -245,6 +272,8 @@ public class Client implements Serializable {
         private String lastModifiedDate;
         @JsonProperty("is_deleted")
         private Boolean isDeleted;
+        @JsonProperty("correlation_id")
+        private String correlation_id;
 
         public String getChannelId() { return channelId; }
         public void setChannelId(String channelId) { this.channelId = channelId; }
@@ -268,6 +297,14 @@ public class Client implements Serializable {
         public void setLastModifiedDate(String lastModifiedDate) { this.lastModifiedDate = lastModifiedDate; }
         public Boolean getIsDeleted() { return isDeleted; }
         public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
+
+        public String getCorrelation_id() {
+            return correlation_id;
+        }
+
+        public void setCorrelation_id(String correlation_id) {
+            this.correlation_id = correlation_id;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -288,6 +325,8 @@ public class Client implements Serializable {
         private String reasonOfUnsubscription;
         @JsonProperty("last_modified_date")
         private String lastModifiedDate;
+        @JsonProperty("correlation_id")
+        private String correlation_id;
 
         public String getCommunicationId() { return communicationId; }
         public void setCommunicationId(String communicationId) { this.communicationId = communicationId; }
@@ -305,6 +344,14 @@ public class Client implements Serializable {
         public void setReasonOfUnsubscription(String reasonOfUnsubscription) { this.reasonOfUnsubscription = reasonOfUnsubscription; }
         public String getLastModifiedDate() { return lastModifiedDate; }
         public void setLastModifiedDate(String lastModifiedDate) { this.lastModifiedDate = lastModifiedDate; }
+
+        public String getCorrelation_id() {
+            return correlation_id;
+        }
+
+        public void setCorrelation_id(String correlation_id) {
+            this.correlation_id = correlation_id;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -390,6 +437,10 @@ public class Client implements Serializable {
         @JsonProperty("language_level")
         private String languageLevel;
 
+        @JsonProperty("correlation_id")
+        private String correlation_id;
+
+
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }
         public String getPersonId() { return personId; }
@@ -400,5 +451,13 @@ public class Client implements Serializable {
         public void setLanguageName(String languageName) { this.languageName = languageName; }
         public String getLanguageLevel() { return languageLevel; }
         public void setLanguageLevel(String languageLevel) { this.languageLevel = languageLevel; }
+
+        public String getCorrelation_id() {
+            return correlation_id;
+        }
+
+        public void setCorrelation_id(String correlation_id) {
+            this.correlation_id = correlation_id;
+        }
     }
 }
