@@ -150,7 +150,7 @@ public class ClientProcessingJob {
 
 
 
-        clientStream.print();
+        validClientStream.print();
 
         env.execute("Client Processing Job");
     }
