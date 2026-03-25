@@ -1,4 +1,4 @@
-package Dto;
+package dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -86,6 +86,10 @@ public class Client implements Serializable {
         private String civilStatus;
         @JsonProperty("passport_number")
         private String passportNumber;
+        @JsonProperty("country_code")
+        private String countryCode;
+        @JsonProperty("country_name")
+        private String countryName;
         @JsonProperty("registration_date")
         private Date registrationDate;
         @JsonProperty("creation_application")
@@ -111,6 +115,22 @@ public class Client implements Serializable {
         public void setRegistrationDate(Date registrationDate) { this.registrationDate = registrationDate; }
         public String getCreationApplication() { return creationApplication; }
         public void setCreationApplication(String creationApplication) { this.creationApplication = creationApplication; }
+
+        public String getCountryName() {
+            return countryName;
+        }
+
+        public void setCountryName(String countryName) {
+            this.countryName = countryName;
+        }
+
+        public String getCountryCode() {
+            return countryCode;
+        }
+
+        public void setCountryCode(String countryCode) {
+            this.countryCode = countryCode;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

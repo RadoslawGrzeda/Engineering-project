@@ -1,6 +1,6 @@
-package Deserializer;
+package deserializer;
 
-import Dto.Client;
+import dto.Client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;

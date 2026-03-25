@@ -1,4 +1,4 @@
-import Dto.Client;
+import dto.Client;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
@@ -90,10 +90,10 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
             errors.add("last_name too long");
         }
 
-        if (isBlank(acc.getBirthDate())) {
+        if (isBlank(acc.getBirthDate().toString())) {
             errors.add("birth_date is missing");
         } else {
-            LocalDate birth = parseDate(acc.getBirthDate());
+            LocalDate birth = acc.getBirthDate().toLocalDate();
             if (birth == null) {
                 errors.add("birth_date invalid format: " + acc.getBirthDate());
             } else if (birth.isAfter(LocalDate.now())) {
@@ -109,9 +109,9 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
             errors.add("gender_code invalid: " + acc.getGenderCode());
         }
 
-        if (isBlank(acc.getRegistrationDate())) {
+        if (isBlank(acc.getRegistrationDate().toString())) {
             errors.add("registration_date is missing");
-        } else if (parseDate(acc.getRegistrationDate()) == null) {
+        } else if (parseDate(acc.getRegistrationDate().toString()) == null) {
             errors.add("registration_date invalid format: " + acc.getRegistrationDate());
         }
 
@@ -331,7 +331,6 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
             collector.collect(client);
         } else {
             LOG.warn("Client {} failed validation: {}", client.getPersonId(), errors);
-            // TODO: dead letter sink
-        }
+            }
     }
 }

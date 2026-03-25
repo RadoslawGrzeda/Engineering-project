@@ -1,4 +1,4 @@
-package Dto;
+package dto;
 
 import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 
