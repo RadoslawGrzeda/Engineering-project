@@ -11,4 +11,4 @@ COPY logger_config.py apps/logger_config.py
 
 EXPOSE 8501
 
-CMD ["streamlit", "run", "main.py", "--server.address=0.0.0.0", "--server.port=8501"]
+CMD ["streamlit", "run", "streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
