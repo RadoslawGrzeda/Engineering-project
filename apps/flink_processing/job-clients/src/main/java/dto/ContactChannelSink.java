@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 public class ContactChannelSink implements JdbcStatementBuilder<Client.ContactChannel> {
     public static final String SQL = "INSERT INTO client.contact_channel (person_id, channel_type, value, flag_main_type," +
-                                    "preferred_channel, option_channel, flag_valid, created_at, updated_at, corellation_id)" +
+                                    "preferred_channel, option_channel, flag_valid, created_at, updated_at, correlation_id)" +
                                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     @Override
