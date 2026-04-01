@@ -6,7 +6,7 @@ import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 
 public class AddressChannelSink implements JdbcStatementBuilder<Client.AddressChannel> {
 
-    public static final String SQL = "INSERT INTO address (person_id, address_type, option_channel," +
+    public static final String SQL = "INSERT INTO client.address (person_id, address_type, option_channel," +
             " address_street, address_zip_code, address_city, country_code, is_current, created_at, updated_at, correlation_id)" +
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 

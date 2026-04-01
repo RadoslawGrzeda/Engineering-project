@@ -10,7 +10,7 @@ import java.sql.SQLException;
 public class DeadLetterSink implements JdbcStatementBuilder<DeadLetter> {
 
     public static final String SQL =
-            "INSERT INTO client.dlq_person_records " +
+            "INSERT INTO client.dead_letter " +
             "(person_id, correlation_id, source_application, error_code, error_message, raw_payload) " +
             "VALUES (?, ?, ?, ?, ?, ?::jsonb)";
 

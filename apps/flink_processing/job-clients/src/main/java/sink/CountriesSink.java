@@ -9,8 +9,8 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
-public class CountriesSink implements JdbcStatementBuilder<Client.Nationality> {
-    public static final String SQL = "INSERT INTO nationality (person_id, country_code, created_at, correlation_id) VALUES (?, ?, ?, ?)";
+public class  wCountriesSink implements JdbcStatementBuilder<Client.Nationality> {
+    public static final String SQL = "INSERT INTO client.nationality (person_id, country_code, created_at, correlation_id) VALUES (?, ?, ?, ?)";
     @Override
     public void accept(PreparedStatement preparedStatement, Client.Nationality nationality) throws SQLException {
         preparedStatement.setString(1, nationality.getPersonId());

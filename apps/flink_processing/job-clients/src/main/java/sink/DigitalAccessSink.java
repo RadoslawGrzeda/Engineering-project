@@ -11,7 +11,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
 public class DigitalAccessSink implements JdbcStatementBuilder<Client> {
-    public static final String SQL = "INSERT INTO digital_access (person_id, username, email_user, is_active, last_login_date, portal_user_confirmation_date, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    public static final String SQL = "INSERT INTO client.digital_access (person_id, username, email_user, is_active, last_login_date, portal_user_confirmation_date, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     @Override
     public void accept(PreparedStatement preparedStatement, Client client) throws SQLException {
