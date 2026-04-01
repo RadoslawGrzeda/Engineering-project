@@ -8,6 +8,7 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -176,21 +177,28 @@ public class ClientValidatorRequiredFields extends ProcessFunction<Client, Clien
     }
     @Override
     public void processElement(Client client, Context ctx, Collector<Client> out) throws Exception {
-        List<String> errors = validate(client);
-        if (errors.isEmpty()) {
-            out.collect(client);
-        } else {
-            LOG.warn("Client {} failed validation: {}", client.getPersonId(), errors);
+        MDC.put("service", "flink-clients");
+        MDC.put("correlation_id", client.getAccount() != null ? client.getAccount().getCorrelation_id() : "-");
+        try {
+            List<String> errors = validate(client);
+            if (errors.isEmpty()) {
+                LOG.info("Client {} passed required fields validation", client.getPersonId());
+                out.collect(client);
+            } else {
+                LOG.warn("Client {} failed validation: {}", client.getPersonId(), errors);
 
-            DeadLetter dl = new DeadLetter();
-            dl.setPersonId(client.getAccount() != null ? client.getAccount().getPersonId() : null);
-            dl.setCorrelationId(client.getAccount() != null ? client.getAccount().getCorrelation_id() : null);
-            dl.setSourceApplication(client.getAccount() != null ? client.getAccount().getCreationApplication() : null);
-            dl.setErrorCode("VALIDATION_ERROR");
-            dl.setErrorMessage(String.join("; ", errors));
-            dl.setRawPayload(MAPPER.writeValueAsString(client));
+                DeadLetter dl = new DeadLetter();
+                dl.setPersonId(client.getAccount() != null ? client.getAccount().getPersonId() : null);
+                dl.setCorrelationId(client.getAccount() != null ? client.getAccount().getCorrelation_id() : null);
+                dl.setSourceApplication(client.getAccount() != null ? client.getAccount().getCreationApplication() : null);
+                dl.setErrorCode("VALIDATION_ERROR");
+                dl.setErrorMessage(String.join("; ", errors));
+                dl.setRawPayload(MAPPER.writeValueAsString(client));
 
-            ctx.output(DEAD_LETTER_TAG, dl);
+                ctx.output(DEAD_LETTER_TAG, dl);
+            }
+        } finally {
+            MDC.clear();
         }
     }
 }
