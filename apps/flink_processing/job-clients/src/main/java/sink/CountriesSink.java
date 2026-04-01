@@ -2,20 +2,56 @@ package sink; import dto.Client;
 
 
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
+import org.apache.flink.util.OutputTag;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
-public class  wCountriesSink implements JdbcStatementBuilder<Client.Nationality> {
+public class  CountriesSink extends JdbcProcessSink<Client.Nationality> {
+    public static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("countries_dead_letter", TypeInformation.of(DeadLetter.class));
     public static final String SQL = "INSERT INTO client.nationality (person_id, country_code, created_at, correlation_id) VALUES (?, ?, ?, ?)";
+
     @Override
-    public void accept(PreparedStatement preparedStatement, Client.Nationality nationality) throws SQLException {
-        preparedStatement.setString(1, nationality.getPersonId());
-        preparedStatement.setString(2, nationality.getCountryCode());
-        preparedStatement.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
-        preparedStatement.setString(4, nationality.getCorrelation_id());
+    protected String getSQL() {
+        return SQL;
+    }
+
+    @Override
+    protected JdbcStatementBuilder<Client.Nationality> getStatementBuilder() {
+        return (PreparedStatement preparedStatement, Client.Nationality nationality) -> {
+            preparedStatement.setString(1, nationality.getPersonId());
+            preparedStatement.setString(2, nationality.getCountryCode());
+            preparedStatement.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
+            preparedStatement.setString(4, nationality.getCorrelation_id());
+        };
+    }
+
+    @Override
+    protected String getPersonId(Client.Nationality element) {
+        return element.getPersonId();
+    }
+
+    @Override
+    protected String getCorrelation_id(Client.Nationality element) {
+        return element.getCorrelation_id();
+    }
+
+    @Override
+    protected String errorTag() {
+        return "Error in Countries Sink";
+    }
+
+    @Override
+    protected String getSourceApplication() {
+        return "CLIENTS";
+    }
+
+    @Override
+    protected OutputTag<DeadLetter> getDeadLetterTag() {
+        return DEAD_LETTER;
     }
 }
