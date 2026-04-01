@@ -13,6 +13,8 @@ public class Client implements Serializable {
     private Account account;
     private Loyalty loyalty;
 
+    private List<Nationality> nationalities;
+
     @JsonProperty("address_channels")
     private List<AddressChannel> addressChannels;
 
@@ -40,6 +42,9 @@ public class Client implements Serializable {
 
     public Loyalty getLoyalty() { return loyalty; }
     public void setLoyalty(Loyalty loyalty) { this.loyalty = loyalty; }
+
+    public List<Nationality> getNationalities() { return nationalities; }
+    public void setNationalities(List<Nationality> nationalities) { this.nationalities = nationalities; }
 
     public List<AddressChannel> getAddressChannels() { return addressChannels; }
     public void setAddressChannels(List<AddressChannel> addressChannels) { this.addressChannels = addressChannels; }
@@ -92,10 +97,6 @@ public class Client implements Serializable {
         private String civilStatus;
         @JsonProperty("passport_number")
         private String passportNumber;
-        @JsonProperty("country_code")
-        private String countryCode;
-        @JsonProperty("country_name")
-        private String countryName;
         @JsonProperty("registration_date")
         private Date registrationDate;
         @JsonProperty("creation_application")
@@ -123,22 +124,6 @@ public class Client implements Serializable {
         public void setRegistrationDate(Date registrationDate) { this.registrationDate = registrationDate; }
         public String getCreationApplication() { return creationApplication; }
         public void setCreationApplication(String creationApplication) { this.creationApplication = creationApplication; }
-
-        public String getCountryName() {
-            return countryName;
-        }
-
-        public void setCountryName(String countryName) {
-            this.countryName = countryName;
-        }
-
-        public String getCountryCode() {
-            return countryCode;
-        }
-
-        public void setCountryCode(String countryCode) {
-            this.countryCode = countryCode;
-        }
 
         public String getCorrelation_id() {
             return correlation_id;
@@ -423,6 +408,23 @@ public class Client implements Serializable {
         public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
         public String getCreatedDate() { return createdDate; }
         public void setCreatedDate(String createdDate) { this.createdDate = createdDate; }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Nationality implements Serializable {
+        @JsonProperty("person_id")
+        private String personId;
+        @JsonProperty("country_code")
+        private String countryCode;
+        @JsonProperty("correlation_id")
+        private String correlation_id;
+
+        public String getPersonId() { return personId; }
+        public void setPersonId(String personId) { this.personId = personId; }
+        public String getCountryCode() { return countryCode; }
+        public void setCountryCode(String countryCode) { this.countryCode = countryCode; }
+        public String getCorrelation_id() { return correlation_id; }
+        public void setCorrelation_id(String correlation_id) { this.correlation_id = correlation_id; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -10,7 +10,7 @@ import java.sql.SQLException;
 
 public class LoyaltyStatusSink implements JdbcStatementBuilder<Client> {
 
-    public static final String SQL = "INSERT INTO loyalty_status (identifier_id, status_code, is_current, start_date, end_date, correlation_id)" +
+    public static final String SQL = "INSERT INTO client.loyalty_status (identifier_id, status_code, is_current, start_date, end_date, correlation_id)" +
                                     " VALUES (?, ?, ?, ?, ?, ?)";
 
     @Override

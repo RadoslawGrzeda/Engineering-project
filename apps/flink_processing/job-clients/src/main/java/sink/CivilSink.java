@@ -10,7 +10,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
 public class CivilSink implements JdbcStatementBuilder<Client> {
-    public static final String SQL = "INSERT INTO civil (person_id, civil_status_type, is_current, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?, ?)";
+    public static final String SQL = "INSERT INTO client.civil (person_id, civil_status_type, is_current, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?, ?)";
 
     @Override
     public void accept(PreparedStatement preparedStatement, Client client) throws SQLException {
