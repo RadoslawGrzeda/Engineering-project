@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 from minio import Minio
 from apps.logger_config import get_logger, correlation_id
-from apps.kafka_minio_consumer.load_file_develop.file_processor import  DataLoader
+from apps.kafka_minio_consumer.load_file_develop.file_processor import DataLoader
 import io 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -138,9 +138,21 @@ class KafkaMinioConsumer:
                 'duration_ms': round((time.perf_counter() - t) * 1000, 2),
             },exc_info=True)
 
+    @staticmethod
+    def _resolve_schema(table_name: str) -> str:
+        product_tables = {'sector', 'department', 'segment', 'segment_chief', 'chief',
+                          'contractor', 'contract', 'product', 'pos_information'}
+        store_tables = {'site', 'site_info', 'site_format', 'site_address', 'site_contact'}
+        if table_name in product_tables:
+            return 'product'
+        elif table_name in store_tables:
+            return 'store'
+        raise ValueError(f"No schema mapping for table: {table_name}")
+
     def _change_file_status_in_db(self, destination_table,file_name, status,error_message=None,inserted_rows=None,rejected_rows=None,engine=None, correlation_id=None):
-            sql = text('''
-                UPDATE etl_load_log_product
+            db_schema = self._resolve_schema(destination_table)
+            sql = text(f'''
+                UPDATE {db_schema}.etl_load_log
                 SET status = :status,
                     error_message = :error_message,
                     inserted_rows_count = :inserted_rows_count,
@@ -186,11 +198,11 @@ class KafkaMinioConsumer:
             # self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
                 len_of_load=process_data.load_to_db(data, schema)
-                if len_of_load == 0:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', error_message=str(errors), engine=self.db_engine, correlation_id=cid)
-                elif errors:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), engine=self.db_engine, correlation_id=cid)
-                elif len_of_load < len(df):
+                if len_of_load == 0 and errors:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), rejected_rows=len(errors), engine=self.db_engine, correlation_id=cid)
+                elif len_of_load == 0 and not errors:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', engine=self.db_engine, correlation_id=cid)
+                elif len_of_load > 0 and errors:
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=self.db_engine, correlation_id=cid)
                 else:
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=self.db_engine, correlation_id=cid)
@@ -242,7 +254,7 @@ class KafkaMinioConsumer:
 
                         df = self._load_file_from_minio(bucket_name, file_key)
                         self._validate_and_load_to_db(df, schema, file_key, cid=cid)
-                        self.consumer.commit({tp: OffsetAndMetadata(msg.offset + 1, None)})
+                        self.consumer.commit({tp: OffsetAndMetadata(msg.offset + 1, None, -1)})
 
                         retry_counts.pop(msg_key, None)
                         self._archive_file_in_minio('archive',bucket_name, file_key)
@@ -272,7 +284,7 @@ class KafkaMinioConsumer:
                                     'offset': msg.offset,
                                 }, exc_info=True)
                             retry_counts.pop(msg_key, None)
-                            self.consumer.commit({tp: OffsetAndMetadata(msg.offset + 1, None)})
+                            self.consumer.commit({tp: OffsetAndMetadata(msg.offset + 1, None, -1)})
                         else:
                             self.logger.warning(
                                 "Error processing message (retry %d/%d): %s",
