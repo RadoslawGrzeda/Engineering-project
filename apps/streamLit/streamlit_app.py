@@ -407,7 +407,11 @@ class Streamlit:
         query = text("""
             SELECT file_name, processed_at, status, destination_table,
                    inserted_rows_count, rejected_rows_count, number_of_rows, error_message
-            FROM etl_load_log_product
+            FROM (
+                SELECT * FROM product.etl_load_log
+                UNION ALL
+                SELECT * FROM store.etl_load_log
+            ) AS etl_load_log
             WHERE user_name = :user_name
             ORDER BY processed_at DESC
         """)
@@ -555,8 +559,18 @@ class Streamlit:
         #         }, exc_info=True)
         #         raise
 
-        sql = text('''
-                INSERT INTO etl_load_log_product(
+        product_tables = {'sector', 'department', 'segment', 'segment_chief', 'chief',
+                          'contractor', 'contract', 'product', 'pos_information'}
+        store_tables = {'site', 'site_info', 'site_format', 'site_address', 'site_contact'}
+        if destination_table in product_tables:
+            db_schema = 'product'
+        elif destination_table in store_tables:
+            db_schema = 'store'
+        else:
+            raise ValueError(f"No schema mapping for table: {destination_table}")
+
+        sql = text(f'''
+                INSERT INTO {db_schema}.etl_load_log(
                 user_name, destination_table, file_name, number_of_rows, file_size,
                 rejected_rows_count, inserted_rows_count, status, error_message)
                 VALUES (:user_name, :destination_table, :file_name, :number_of_rows, :file_size,
