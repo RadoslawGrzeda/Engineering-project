@@ -45,6 +45,17 @@ class DataLoader:
         # self.engine = sa.create_engine(self.connection_string)
         self.engine = engine or sa.create_engine(self.connection_string)
 
+    @staticmethod
+    def _resolve_schema(table_name: str) -> str:
+        product_tables = {'sector', 'department', 'segment', 'segment_chief', 'chief',
+                          'contractor', 'contract', 'product', 'pos_information'}
+        store_tables = {'site', 'site_info', 'site_format', 'site_address', 'site_contact'}
+        if table_name in product_tables:
+            return 'product'
+        elif table_name in store_tables:
+            return 'store'
+        raise ValueError(f"No schema mapping for table: {table_name}")
+
     def validate_shape(self, schema_name: str):
         t = time.perf_counter()
         shape=SCHEMA_MAP[schema_name]
@@ -121,11 +132,13 @@ class DataLoader:
             raise NotImplementedError(f"Load to DB not implemented for table: {table_name}")
         return handler_map[table_name](df)
 
-    def load_to_dead_letter(self, row_data:List[Tuple[int, dict, str]], source_table):
+    def load_to_dead_letter(self, row_data:List[Tuple[int, dict, str]], source_table, schema: str = None):
         t = time.perf_counter()
+        if schema is None:
+            schema = self._resolve_schema(source_table)
         try:
-            sql = text('''
-                INSERT INTO dead_letter (source_table, source_file, raw_row, error_details, line_no, correlation_id)
+            sql = text(f'''
+                INSERT INTO {schema}.dead_letter (source_table, source_file, raw_row, error_details, line_no, correlation_id)
                 VALUES (:source_table, :source_file, :raw_row, :error_details, :line_no, :correlation_id)
             ''')
             records=[{
@@ -170,7 +183,7 @@ class DataLoader:
         t = time.perf_counter()
         source_file=self.path
         sql=text(f'''
-                    INSERT INTO sector (sector_id, sector_name, sector_code,source_file)
+                    INSERT INTO product.sector (sector_id, sector_name, sector_code,source_file)
                     VALUES (:sector_id, :sector_name, :sector_code,:source_file)
                     ON CONFLICT (sector_id) DO UPDATE SET
                     sector_name = EXCLUDED.sector_name,
@@ -226,7 +239,7 @@ class DataLoader:
     def _get_existing_sectors(self) -> set[int]:
         try:
             with self.engine.begin() as conn:
-                rows=conn.execute(text("SELECT sector_id FROM sector"))
+                rows=conn.execute(text("SELECT sector_id FROM product.sector"))
                 return set(row[0] for row in rows)
         except Exception as e:
             logger.error("Error fetching existing sectors", extra={
@@ -257,14 +270,14 @@ class DataLoader:
 
 
         sql=text(f"""
-                    INSERT INTO department (department_id, department_name,sector_id,source_file)
+                    INSERT INTO product.department (department_id, department_name,sector_id,source_file)
                     VALUES (:department_id, :department_name, :sector_id, :source_file)
                     ON CONFLICT (department_id) DO UPDATE SET
                         department_name = EXCLUDED.department_name,
                         sector_id = EXCLUDED.sector_id,
                         source_file = EXCLUDED.source_file,
                         updated_at = CURRENT_TIMESTAMP;
-                        
+
                     """)
         
         df['updated_at']=datetime.datetime.now()
@@ -286,7 +299,8 @@ class DataLoader:
             reasons.append(f"sector_id={row['sector_id']} not found in sector table")
             dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
 
-        self.load_to_dead_letter(dead_letter_rows, "department")
+        if dead_letter_rows:
+            self.load_to_dead_letter(dead_letter_rows, "department")
 
         with self.engine.begin() as conn:
             try:
@@ -337,7 +351,7 @@ class DataLoader:
         valid = df[df['sector_id'].isin(existing_sectors)].copy()
 
         sql=text(f"""
-                    INSERT INTO segment (segment_id, segment_code, segment_name, sector_id, source_file)
+                    INSERT INTO product.segment (segment_id, segment_code, segment_name, sector_id, source_file)
                     VALUES (:segment_id, :segment_code, :segment_name, :sector_id, :source_file)
                     ON CONFLICT (segment_id) DO UPDATE SET
                         segment_code = EXCLUDED.segment_code,
@@ -348,7 +362,7 @@ class DataLoader:
                     """)
 
         update_sql=text(f'''
-                        UPDATE segment_chief 
+                        UPDATE product.segment_chief
                         SET is_current = False,
                         valid_to=current_date
                         where segment_id = :segment_id
@@ -358,10 +372,10 @@ class DataLoader:
                         ''')
 
         insert_relation_sql = text(f'''
-                                INSERT INTO segment_chief (segment_id, chief_id, is_current, valid_from, valid_to, source_file)
+                                INSERT INTO product.segment_chief (segment_id, chief_id, is_current, valid_from, valid_to, source_file)
                                 SELECT :segment_id, :chief_id, :is_current, :valid_from, :valid_to, :source_file
                                 WHERE NOT EXISTS (
-                                    SELECT 1 FROM segment_chief
+                                    SELECT 1 FROM product.segment_chief
                                     WHERE segment_id = :segment_id
                                     AND chief_id = :chief_id
                                     AND is_current = True
@@ -398,7 +412,9 @@ class DataLoader:
                 reasons = []
                 reasons.append(f"sector_id={row['sector_id']} not found in sector table")
                 dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
-            self.load_to_dead_letter(dead_letter_rows, "segment")
+
+            if dead_letter_rows:
+                self.load_to_dead_letter(dead_letter_rows, "segment")
 
         with self.engine.begin() as conn:
             try:
@@ -462,7 +478,7 @@ class DataLoader:
             raise ValueError("No chief records to load: DataFrame is empty")
 
         sql = text(f"""
-                    INSERT INTO chief (chief_id, chief_first_name, chief_last_name, email_address, phone_number,source_file)
+                    INSERT INTO product.chief (chief_id, chief_first_name, chief_last_name, email_address, phone_number,source_file)
                     VALUES (:chief_id, :chief_first_name, :chief_last_name, :chief_email, :chief_phone, :source_file)
                     ON CONFLICT (chief_id) DO UPDATE SET
                     email_address = EXCLUDED.email_address,
@@ -512,7 +528,7 @@ class DataLoader:
         t = time.perf_counter()
         source_file=self.path
         sql = text(f'''
-        INSERT INTO contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email_address, contractor_address, source_file, created_at,updated_at)
+        INSERT INTO product.contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email_address, contractor_address, source_file, created_at,updated_at)
         VALUES (:contractor_id, :contractor_name, :contractor_phone_number, :contractor_email_address, :contractor_address, :source_file, :created_at, :updated_at)
         ON CONFLICT (contractor_id) DO UPDATE SET
         contractor_name = EXCLUDED.contractor_name,
@@ -531,18 +547,18 @@ class DataLoader:
             raise ValueError("No contractor records to load: DataFrame is empty")
 
         if 'contract_number' in df.columns:
-            update_contract_sql = text(f''' 
-            UPDATE contract 
+            update_contract_sql = text(f'''
+            UPDATE product.contract
             SET is_current = False,
             valid_to = current_date
-            where 
+            where
             contractor_id = :contractor_id
             and contract_number != :contract_number
             and is_current = True
             and valid_to is null;
             ''')
             insert_contract_sql = text(f'''
-            INSERT INTO contract (contractor_id,contract_number, signed_date,status,is_current,valid_from,valid_to,source_file)
+            INSERT INTO product.contract (contractor_id,contract_number, signed_date,status,is_current,valid_from,valid_to,source_file)
             VALUES (:contractor_id, :contract_number, :signed_date, :status, :is_current, :valid_from, :valid_to, :source_file)
             ON CONFLICT (contractor_id,contract_number) DO UPDATE SET
             signed_date = EXCLUDED.signed_date,
@@ -629,7 +645,7 @@ class DataLoader:
     def _get_existing_art_keys(self) -> set[int]:
         try:
             with self.engine.begin() as conn:
-                rows = conn.execute(text("SELECT art_key FROM product"))
+                rows = conn.execute(text("SELECT art_key FROM product.product"))
                 return set(row[0] for row in rows)
         except Exception as e:
             logger.error("Error fetching existing art_keys", extra={
@@ -648,7 +664,7 @@ class DataLoader:
             with self.engine.begin() as conn:
                 q = text(
                     "SELECT art_key, ean, price_net, price_gross, vat_rate "
-                    "FROM pos_information WHERE date_end IS NULL AND art_key = ANY(:keys)"
+                    "FROM product.pos_information WHERE date_end IS NULL AND art_key = ANY(:keys)"
                 )
                 rows = conn.execute(q, {"keys": list(art_keys)})
                 return pd.DataFrame(
@@ -667,7 +683,7 @@ class DataLoader:
     def _get_existing_contractor_ids(self) -> set[int]:
         try:
             with self.engine.begin() as conn:
-                rows = conn.execute(text("SELECT contractor_id FROM contractor"))
+                rows = conn.execute(text("SELECT contractor_id FROM product.contractor"))
                 return set(row[0] for row in rows)
         except Exception as e:
             logger.error("Error fetching existing contractor_ids", extra={
@@ -681,7 +697,7 @@ class DataLoader:
     def _get_existing_segment_ids(self) -> set[int]:
         try:
             with self.engine.begin() as conn:
-                rows = conn.execute(text("SELECT segment_id FROM segment"))
+                rows = conn.execute(text("SELECT segment_id FROM product.segment"))
                 return set(row[0] for row in rows)
         except Exception as e:
             logger.error("Error fetching existing segment_ids", extra={
@@ -695,7 +711,7 @@ class DataLoader:
     def _get_existing_department_ids(self) -> set[int]:
         try:
             with self.engine.begin() as conn:
-                rows = conn.execute(text("SELECT department_id FROM department"))
+                rows = conn.execute(text("SELECT department_id FROM product.department"))
                 return set(row[0] for row in rows)
         except Exception as e:
             logger.error("Error fetching existing department_ids", extra={
@@ -720,7 +736,7 @@ class DataLoader:
             raise ValueError("No pos_information records to load: DataFrame is empty")
 
         update_sql = text('''
-            UPDATE pos_information
+            UPDATE product.pos_information
             SET valid_to = :valid_to,
                 is_current = :is_current,
                 updated_at = :updated_at,
@@ -729,11 +745,11 @@ class DataLoader:
         ''')
 
         insert_sql = text('''
-            INSERT INTO pos_information (art_key, ean, vat_rate, price_net, price_gross,
+            INSERT INTO product.pos_information (art_key, ean, vat_rate, price_net, price_gross,
                                         valid_from, created_at, updated_at, source_file, is_current)
             VALUES (:art_key, :ean, :vat_rate, :price_net, :price_gross, :valid_from, :created_at,
                     :updated_at, :source_file, :is_current)
-            
+
         ''')
 
         existing_art_keys = self._get_existing_art_keys()
@@ -751,17 +767,17 @@ class DataLoader:
             dead_letter_rows = []
             for idx, row in invalid.iterrows():
                 dead_letter_rows.append((idx, row.to_dict(), f"art_key={row['art_key']} not found in product table"))
-            self.load_to_dead_letter(dead_letter_rows, "pos_information")
+
+            if dead_letter_rows:
+                self.load_to_dead_letter(dead_letter_rows, "pos_information")
 
         if valid.empty:
             logger.info("pos_information: no valid art_keys found.")
             return 0
 
-        # SELECT + compare + UPDATE + INSERT w jednej transakcji z blokowaniem wierszy (FOR UPDATE)
-        # Zapobiega race condition gdy dwa pliki przetwarzają ten sam art_key równocześnie
         lock_sql = text(
             "SELECT art_key, ean, price_net, price_gross, vat_rate "
-            "FROM pos_information WHERE valid_to IS NULL AND art_key = ANY(:keys) "
+            "FROM product.pos_information WHERE valid_to IS NULL AND art_key = ANY(:keys) "
             "FOR UPDATE"
         )
 
@@ -870,7 +886,7 @@ class DataLoader:
             raise ValueError("No product records to load: DataFrame is empty")
 
         sql = text("""
-                   INSERT INTO product (art_key, art_number, contractor_id, segment_id, department_id,
+                   INSERT INTO product.product (art_key, art_number, contractor_id, segment_id, department_id,
                                         brand, article_codification_date, created_at, updated_at, source_file)
                    VALUES (:art_key, :art_number, :contractor_id, :segment_id, :department_id,
                            :brand, :article_codification_date, :created_at, :updated_at, :source_file)
@@ -919,7 +935,8 @@ class DataLoader:
                     reasons.append(f"department_id={row['departament_id']} not found")
                 dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
 
-            self.load_to_dead_letter(dead_letter_rows, "product")
+            if dead_letter_rows:
+                self.load_to_dead_letter(dead_letter_rows, "product")
 
         if valid.empty:
             logger.warning("No valid product records to insert", extra={
@@ -983,7 +1000,7 @@ class DataLoader:
     def _get_existing_site_code(self):
         with self.engine.begin() as conn:
             sql = text('''
-            select site_unique_code, site_code from site''')
+            select site_unique_code, site_code from store.site''')
             site_codes = conn.execute(sql).fetchall()
             return {row.site_code: row.site_unique_code  for row in site_codes}
 
@@ -1031,7 +1048,8 @@ class DataLoader:
             reasons.append(f"Site code {row['site_code']} used with another site")
             dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
 
-        self.load_to_dead_letter(dead_letter_rows, "site")
+        if dead_letter_rows:
+            self.load_to_dead_letter(dead_letter_rows, "site")
 
         if valid.empty:
             logger.warning("No valid site records to insert", extra={
@@ -1042,9 +1060,10 @@ class DataLoader:
                 "source_file": self.path
 
             })
+            return 0
 
         sql = text('''
-                    INSERT INTO site (site_unique_code, site_code, site_name, created_at, updated_at, source_file)
+                    INSERT INTO store.site (site_unique_code, site_code, site_name, created_at, updated_at, source_file)
                     VALUES (:site_unique_code, :site_code, :site_name, :created_at, :updated_at, :source_file)
                     ON CONFLICT (site_unique_code) DO UPDATE SET
                         site_code = EXCLUDED.site_code,
@@ -1092,7 +1111,7 @@ class DataLoader:
     def _get_existing_site_codes(self) -> set[str]:
         try:
             with self.engine.begin() as conn:
-                rows = conn.execute(text('SELECT site_unique_code FROM site'))
+                rows = conn.execute(text('SELECT site_unique_code FROM store.site'))
                 return set(row[0] for row in rows)
         except Exception as e:
             logger.error("Error fetching existing site codes", extra={
@@ -1105,7 +1124,7 @@ class DataLoader:
     def _get_existing_site_codes_from_info(self) -> set[str]:
         try:
             with self.engine.begin() as conn:
-                rows = conn.execute(text('SELECT site_unique_code FROM site_info'))
+                rows = conn.execute(text('SELECT site_unique_code FROM store.site_info'))
                 return set(row[0] for row in rows)
         except Exception as e:
             logger.error("Error fetching existing site codes", extra={
@@ -1147,7 +1166,9 @@ class DataLoader:
             reasons = []
             reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
             dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
-        self.load_to_dead_letter(dead_letter_rows, "site_info")
+
+        if dead_letter_rows:
+            self.load_to_dead_letter(dead_letter_rows, "site_info")
 
         if valid.empty:
             logger.warning("No valid site_info records to insert", extra={
@@ -1160,14 +1181,14 @@ class DataLoader:
 
         check_sql = text('''
             SELECT site_unique_code, site_status_code
-            FROM site_info
+            FROM store.site_info
             WHERE site_unique_code = ANY(:codes)
               AND is_current = True
             FOR UPDATE;
         ''')
 
         update_sql = text('''
-            UPDATE site_info
+            UPDATE store.site_info
             SET is_current = False,
                 updated_at= CURRENT_TIMESTAMP,
                 site_closing_date=CURRENT_TIMESTAMP
@@ -1177,7 +1198,7 @@ class DataLoader:
               # AND site_status_code = 'ACTIVE'
 
         insert_sql = text('''
-            INSERT INTO site_info (site_unique_code, site_status_code, site_opening_date, site_closing_date,
+            INSERT INTO store.site_info (site_unique_code, site_status_code, site_opening_date, site_closing_date,
                                    is_current, source_file)
             VALUES (:site_unique_code, :site_status_code, :site_opening_date, :site_closing_date,
                     :is_current, :source_file)
@@ -1304,7 +1325,8 @@ class DataLoader:
             reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
             dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
 
-        self.load_to_dead_letter(dead_letter_rows, "site_format")
+        if dead_letter_rows:
+            self.load_to_dead_letter(dead_letter_rows, "site_format")
 
         if valid.empty:
             logger.warning("No valid site_format records to insert", extra={
@@ -1317,14 +1339,14 @@ class DataLoader:
 
         check_sql = text('''
             SELECT site_unique_code, site_format_unique_code
-            FROM site_format
+            FROM store.site_format
             WHERE site_unique_code = ANY(:codes)
               AND is_current = True
             FOR UPDATE;
         ''')
 
         update_sql = text('''
-            UPDATE site_format
+            UPDATE store.site_format
             SET is_current = False,
                 valid_to = current_date
             WHERE site_unique_code = :site_unique_code
@@ -1332,7 +1354,7 @@ class DataLoader:
         ''')
 
         insert_sql = text('''
-            INSERT INTO site_format (site_unique_code, site_format_unique_code, is_current, valid_from, valid_to,created_at, source_file)
+            INSERT INTO store.site_format (site_unique_code, site_format_unique_code, is_current, valid_from, valid_to,created_at, source_file)
             VALUES (:site_unique_code, :site_format_unique_code, :is_current, :valid_from, :valid_to, :created_at, :source_file)
         ''')
 
@@ -1442,7 +1464,8 @@ class DataLoader:
             reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
             dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
 
-        self.load_to_dead_letter(dead_letter_rows, "site_address")
+        if dead_letter_rows:
+            self.load_to_dead_letter(dead_letter_rows, "site_address")
 
 
         if valid.empty:
@@ -1457,7 +1480,7 @@ class DataLoader:
         check_sql = text('''
             SELECT site_unique_code, site_address_zip_code, site_address_city, site_address_street,
                    city_code, country_code
-            FROM site_address
+            FROM store.site_address
             WHERE site_unique_code = ANY(:codes)
               AND is_current = True
             FOR UPDATE;
@@ -1472,14 +1495,14 @@ class DataLoader:
         # ''')
 
         update_sql = text('''
-            UPDATE site_address
+            UPDATE store.site_address
             SET is_current = False
             WHERE site_unique_code = :site_unique_code
               AND is_current = True;
         ''')
 
         insert_sql = text('''
-            INSERT INTO site_address (site_unique_code, site_address_zip_code, site_address_city, site_address_street,
+            INSERT INTO store.site_address (site_unique_code, site_address_zip_code, site_address_city, site_address_street,
                                       city_code, country_code, site_geo_coordinate_x_value, site_geo_coordinate_y_value,
                                       is_current, source_file)
             VALUES (:site_unique_code, :site_address_zip_code, :site_address_city, :site_address_street,
@@ -1501,7 +1524,7 @@ class DataLoader:
             )
 
         # valid['site_address_complement'] = re.sub(r"ul. (.)", valid['site_address_street']) +','+valid['site_address_zip_code']+','+valid['site_address_city']
-        street_no_prefix = valid["site_address_street"].str.replace(r"^\s*ul\.\s*", "", regex=True)
+        street_no_prefix = valid["site_address_street"].str.replace(r"^\s*(?:ul|pl|al|os)\.\s*", "", regex=True)
 
         valid["site_address_complement"] = (
                 street_no_prefix.astype(str)
@@ -1522,6 +1545,20 @@ class DataLoader:
             coords = valid.apply(_find_coordinates, axis=1)
             valid['site_geo_coordinate_x_value'] = coords['site_geo_coordinate_x_value']
             valid['site_geo_coordinate_y_value'] = coords['site_geo_coordinate_y_value']
+
+            total = len(valid)
+            resolved = valid['site_geo_coordinate_x_value'].notna().sum()
+            failed = total - resolved
+            logger.info("Geo coordinates fetching completed", extra={
+                'class': 'GeoCoordinates',
+                'method': "get_coordinates",
+                "table": "site_address",
+                "source_file": source_file,
+                "total_addresses": total,
+                "resolved": int(resolved),
+                "failed": int(failed),
+                "duration_ms": round((time.perf_counter() - t) * 1000, 2),
+            })
         except Exception as e:
             logger.error("Error fetching geo coordinates", extra={
                 'class': self.__class__.__name__,
@@ -1584,6 +1621,12 @@ class DataLoader:
                 records = valid[['site_unique_code', 'site_address_zip_code', 'site_address_city', 'site_address_street',
                                  'city_code', 'country_code', 'site_geo_coordinate_x_value', 'site_geo_coordinate_y_value',
                                  'is_current', 'source_file']].to_dict(orient='records')
+
+                for rec in records:
+                    for geo_col in ('site_geo_coordinate_x_value', 'site_geo_coordinate_y_value'):
+                        v = rec.get(geo_col)
+                        if v is None or (isinstance(v, float) and pd.isna(v)):
+                            rec[geo_col] = None
 
                 update_records = valid[['site_unique_code']].drop_duplicates().to_dict(orient='records')
 
@@ -1659,7 +1702,8 @@ class DataLoader:
             reasons.append(f"site_unique_code {row['site_unique_code']} not found in site table")
             dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
 
-        self.load_to_dead_letter(dead_letter_rows, "site_contact")
+        if dead_letter_rows:
+            self.load_to_dead_letter(dead_letter_rows, "site_contact")
 
         if valid.empty:
             logger.warning("No valid site_contact records to insert", extra={
@@ -1703,14 +1747,14 @@ class DataLoader:
 
         check_sql = text('''
             SELECT site_unique_code, contact_type, contact_value, contact_role
-            FROM site_contact
+            FROM store.site_contact
             WHERE site_unique_code = ANY(:codes)
               AND valid_to IS NULL
             FOR UPDATE;
         ''')
 
         close_primary_sql = text('''
-            UPDATE site_contact
+            UPDATE store.site_contact
             SET is_primary = False,
                 valid_to = current_date
             WHERE site_unique_code = :site_unique_code
@@ -1721,7 +1765,7 @@ class DataLoader:
         ''')
 
         insert_sql = text('''
-            INSERT INTO site_contact (site_unique_code, contact_type, contact_value, contact_role,
+            INSERT INTO store.site_contact (site_unique_code, contact_type, contact_value, contact_role,
                                       valid_from, valid_to, is_primary, source_file)
             VALUES (:site_unique_code, :contact_type, :contact_value, :contact_role,
                     :valid_from, :valid_to, :is_primary, :source_file)
