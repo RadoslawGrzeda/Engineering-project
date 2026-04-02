@@ -2,10 +2,18 @@ import json
 import uuid
 from datetime import datetime, timedelta, date
 from random import randint, choice, uniform
-import uuid
 from faker import Faker
 
 from apps.logger_config import correlation_id
+
+FAKER_BY_COUNTRY = {
+    "PL": Faker("pl_PL"),
+    "DE": Faker("de_DE"),
+    "CZ": Faker("cs_CZ"),
+    "SK": Faker("sk_SK"),
+    "UA": Faker("uk_UA"),
+    "LT": Faker("lt_LT"),
+}
 
 GENDERS = [
     {"gender_code": "M", "gender_name": "Male"},
@@ -28,13 +36,26 @@ COUNTRIES = [
     {"country_code": "LT", "country_name": "Lithuania"},
 ]
 
+
 LANGUAGES = [
     {"language_code": "pl", "language_name": "Polish"},
-    {"language_code": "de", "language_name": "Germany"},
+    {"language_code": "de", "language_name": "German"},
     {"language_code": "en", "language_name": "English"},
     {"language_code": "es", "language_name": "Spanish"},
-    {"language_code": "uk", "language_name": "Ukraine"},
+    {"language_code": "uk", "language_name": "Ukrainian"},
+    {"language_code": "cs", "language_name": "Czech"},
+    {"language_code": "sk", "language_name": "Slovak"},
+    {"language_code": "lt", "language_name": "Lithuanian"},
 ]
+
+COUNTRY_LANGUAGE_MAP = {
+    "PL": {"language_code": "pl", "language_name": "Polish"},
+    "DE": {"language_code": "de", "language_name": "German"},
+    "CZ": {"language_code": "cs", "language_name": "Czech"},
+    "SK": {"language_code": "sk", "language_name": "Slovak"},
+    "UA": {"language_code": "uk", "language_name": "Ukrainian"},
+    "LT": {"language_code": "lt", "language_name": "Lithuanian"},
+}
 
 LANGUAGE_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"]
 
@@ -49,12 +70,18 @@ COMMUNICATION_CODES = [
     {"code": "LOYALTY_INFO", "value": "Loyalty information"},
 ]
 
+
+
 ACCOUNT_INDICATOR_TYPES = [
     # {"type": "VIP", "value": "true"},
     {"type": "EMPLOYEE", "value": "false"},
     {"type": "SENIOR", "value": "true"},
     {"type": "KDR", "value": "true"},
 ]
+# stworz mi metode obliczajaca wiek persona na podstawie daty urodzenia i aktualnej daty, a następnie wykorzystaj ją w generowaniu wskaźnika seniora (SENIOR) w metodzie _generate_account_indicators.
+# Wskaźnik SENIOR powinien być aktywny (value_account_indicator = 'ACTIVE')
+# dla osób w wieku 60 lat i starszych, z prawdopodobieństwem 50%,
+# a dla pozostałych osób powinien być None.
 
 
 class PersonGenerator:
@@ -62,25 +89,38 @@ class PersonGenerator:
         self.fake = Faker("pl_PL")
 
 
+    def _calculate_age(self, birthdate):
+        today = date.today()
+        age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+        return age
+
     def _generate_account(self):
-        first_name = self.fake.first_name()
-        gender = "F" if first_name.lower().endswith("a") else "M"
-        person_id = str(uuid.uuid4())[:8]
-        registration_date = self.fake.date_between(start_date="-5y", end_date="today")
-        country_code = choice(COUNTRIES)["country_code"] if randint(0, 100) > 75 else 'Poland';
         country = choice(COUNTRIES) if randint(0, 100) > 75 else COUNTRIES[0]
+        fake = FAKER_BY_COUNTRY[country["country_code"]]
+
+        gender = choice(["M", "F"])
+        if gender == "F":
+            first_name = fake.first_name_female()
+            last_name = fake.last_name_female()
+            middle_name = fake.first_name_female() if randint(0, 100) > 85 else None
+        else:
+            first_name = fake.first_name_male()
+            last_name = fake.last_name_male()
+            middle_name = fake.first_name_male() if randint(0, 100) > 85 else None
+
+        person_id = str(uuid.uuid4())[:13].replace("-", "")
+        registration_date = fake.date_between(start_date="-5y", end_date="today")
         return {
             "person_id": person_id,
-            # "person_ty": choice(["fizyczna", "prawna"]) if randint(0, 100) > 95 else "fizyczna",
             "first_name": first_name,
-            "last_name": self.fake.last_name_female() if gender == "F" else self.fake.last_name(),
-            "middle_name": (self.fake.first_name_female() if gender == "F" else self.fake.first_name_male()) if randint(0, 100) > 95 else None,
-            "birth_date": self.fake.date_of_birth(minimum_age=15, maximum_age=90).isoformat(),
+            "last_name": last_name,
+            "middle_name": middle_name,
+            "birth_date": fake.date_of_birth(minimum_age=15, maximum_age=90).isoformat(),
             "gender_code": gender,
-            'country_code':country['country_code'],
-            'country_name': country['country_name'],
+            "country_code": country["country_code"],
+            "country_name": country["country_name"],
             "civil_status": choice(CIVIL_STATUSES)["civil"] if randint(0, 100) > 95 else None,
-            "passport_number": self.fake.bothify("??#######").upper() if randint(0, 100) > 95 else None,
+            "passport_number": fake.bothify("??#######").upper() if randint(0, 100) > 95 else None,
             "registration_date": registration_date.isoformat(),
             "creation_application": choice(["STORE_POS", "WEBSITE", "MOBILE_APPLICATION"]),
         }
@@ -99,32 +139,53 @@ class PersonGenerator:
         }
 
 
-    def _generate_address_channel(self, person_id: str):
+    def _generate_single_address(self, person_id: str, option_channel: str, is_current: bool):
         city = self.fake.city()
         street = self.fake.street_address()
         zipcode = self.fake.zipcode()
-        country = choice(COUNTRIES)
 
         return {
             "channel_id": str(uuid.uuid4()),
             "person_id": person_id,
             "channel_type": "address",
-            "value": f"{street}, {zipcode} {city}, Polska",
-            "flag_main_type": randint(0, 100) < 80,
-            "preferred_channel": randint(0, 100) < 60,
+            "value": f"{street}, {zipcode} {city}",
+            "flag_main_type": option_channel == "home",
+            "preferred_channel": option_channel == "home",
             "address_address": street,
             "address_zip_code": zipcode,
-            'address_code':'PL',
+            "address_code": "PL",
             "address_city": city,
-            # "address_x_position": round(uniform(49.0, 54.8), 6),
-            # "address_y_position": round(uniform(14.1, 24.1), 6),
-            "option_channel": choice(["work", "other"]) if randint(0, 100) > 85 else "home",
-            "flag_valid": randint(0, 100) < 90,
-            # "source": choice(["STORE_POS", "ECOMMERCE", "MOBILE_APP", "MANUAL"]),
-            "created_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
-            "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
-            "is_deleted": False,
+            "option_channel": option_channel,
+            "flag_valid": is_current and randint(0, 100) < 90,
+            "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+            "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+            "is_deleted": not is_current,
         }
+
+    def _generate_address_channels(self, person_id: str):
+        roll = randint(0, 100)
+
+        if roll < 5:
+            return []
+
+        if roll < 30:
+            return [self._generate_single_address(person_id, "home", is_current=True)]
+
+        if roll < 70:
+            return [
+                self._generate_single_address(person_id, "home", is_current=True),
+                self._generate_single_address(person_id, "work", is_current=True),
+            ]
+
+        addresses = [
+            self._generate_single_address(person_id, "home", is_current=True),
+            self._generate_single_address(person_id, "work", is_current=True),
+            self._generate_single_address(person_id, choice(["home", "other"]), is_current=False),
+        ]
+        return addresses
+
+
+
 
 
     def _generate_contact_channels(self, person_id: str):
@@ -140,8 +201,8 @@ class PersonGenerator:
             "option_channel": choice(["personal", "work"]),
             "flag_valid": randint(0, 100) < 90,
             # "source": choice(["STORE_POS", "ECOMMERCE", "MOBILE_APP"]),
-            "created_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
-            "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
+            "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+            "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
             "is_deleted": False,
         })
 
@@ -155,24 +216,25 @@ class PersonGenerator:
             "option_channel": choice(["mobile", "landline"]),
             "flag_valid": randint(0, 100) < 85,
             # "source": choice(["STORE_POS", "ECOMMERCE", "MOBILE_APP"]),
-            "created_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
-            "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
+            "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+            "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
             "is_deleted": False,
         })
 
         if randint(0, 100) > 70:
+            channel_type = choice(["email", "phone"])
             channels.append({
                 "channel_id": str(uuid.uuid4()),
                 "person_id": person_id,
-                "channel_type": choice(["email", "phone"]),
-                "value": self.fake.email() if randint(0, 1) else self.fake.phone_number(),
+                "channel_type": channel_type,
+                "value": self.fake.email() if channel_type == "email" else self.fake.phone_number(),
                 "flag_main_type": False,
                 "preferred_channel": False,
                 "option_channel": "work",
                 "flag_valid": randint(0, 100) < 70,
                 # "source": choice(["STORE_POS", "ECOMMERCE", "MOBILE_APP"]),
-                "created_date": self.fake.date_between(start_date="-3y", end_date="today").isoformat(),
-                "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
+                "created_date": datetime.combine(self.fake.date_between(start_date="-3y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+                "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
                 "is_deleted": False,
             })
 
@@ -189,10 +251,10 @@ class PersonGenerator:
                     "person_id": person_id,
                     "community_code": comm["code"],
                     "community_code_value": comm["value"],
-                    "date_of_subscription": sub_date.isoformat(),
-                    "date_of_unsubscription": (sub_date + timedelta(days=randint(30, 365))).isoformat() if is_unsubscribed else None,
+                    "date_of_subscription": datetime.combine(sub_date, datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+                    "date_of_unsubscription": datetime.combine(sub_date + timedelta(days=randint(30, 365)), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S") if is_unsubscribed else None,
                     "reason_of_unsubscription": choice(["spam", "not_interested", "too_frequent"]) if is_unsubscribed else None,
-                    "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
+                    "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
                 })
         return subscriptions
 
@@ -207,17 +269,16 @@ class PersonGenerator:
             "username": self.fake.user_name() if is_active else None,
             "email_user": email,
             "is_active": is_active,
-            "last_login_date": self.fake.date_between(start_date="-30d", end_date="today").isoformat() if is_active else None,
-            "created_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
-            "portal_user_confirmation_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat() if is_active else None,
+            "last_login_date": datetime.combine(self.fake.date_between(start_date="-30d", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S") if is_active else None,
+            "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+            "portal_user_confirmation_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S") if is_active else None,
             'preferred_delivery_method':choice(['Courier','Parcel locker','Personal collection']) if is_active and randint(0,100)>70 else None,
         }
 
-    def _get_age(self,date_of_birth:datetime) -> int:
+    def _get_age(self, date_of_birth: str) -> int:
         today = date.today()
-        date_of_birth = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
-        age=today.year-date_of_birth.year - ((today.month, today.day) < (today.month, today.day))
-        return age
+        dob = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
+        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
     def _generate_account_indicators(self, person_id: str,date_of_birth: datetime,civil_status) -> dict:
         # indicators = []
@@ -237,9 +298,9 @@ class PersonGenerator:
                 "person_id": person_id,
                 "type_account_indicator": 'KDR' if is_kdf else 'SENIOR',
                 "value_account_indicator": 'ACTIVE',
-                "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
+                "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
                 "is_deleted": False,
-                "created_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
+                "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
             }
         if randint(0, 100) >80:
             return {
@@ -247,9 +308,9 @@ class PersonGenerator:
                 "person_id": person_id,
                 "type_account_indicator": 'EMPLOYEE',
                 "value_account_indicator": 'ACTIVE' if randint(0, 100) < 80 else 'NON_ACTIVE',
-                "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
+                "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
                 "is_deleted": False,
-                "created_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
+                "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
             }
         return None
 
@@ -265,44 +326,89 @@ class PersonGenerator:
         # return indicators
 
 
-    def _generate_languages(self, person_id: str):
-        langs = [LANGUAGES[0]]
-        if randint(0, 100) < 50:
-            extra = choice(LANGUAGES[1:])
-            langs.append(extra)
+    def _generate_nationalities(self, person_id: str, primary_country_code: str):
+        nationalities = [{"person_id": person_id, "country_code": primary_country_code}]
+        if randint(0, 100) < 15:
+            extra = choice([c for c in COUNTRIES if c["country_code"] != primary_country_code])
+            nationalities.append({"person_id": person_id, "country_code": extra["country_code"]})
+        return nationalities
 
-        return [
-            {
+    def _generate_languages(self, person_id: str, nationalities: list):
+        country_codes = [n["country_code"] for n in nationalities]
+
+        native_lang = COUNTRY_LANGUAGE_MAP[country_codes[0]]
+        seen_codes = {native_lang["language_code"]}
+        langs = [{
+            "id": str(uuid.uuid4()),
+            "person_id": person_id,
+            "language_code": native_lang["language_code"],
+            "language_name": native_lang["language_name"],
+            "language_level": "C2",
+        }]
+
+        if native_lang["language_code"] != "pl":
+            seen_codes.add("pl")
+            langs.append({
                 "id": str(uuid.uuid4()),
                 "person_id": person_id,
-                "language_code": lang["language_code"],
-                "language_name": lang["language_name"],
-                "language_level": "C2" if lang["language_code"] == "pl" else choice(LANGUAGE_LEVELS),
-            }
-            for lang in langs
-        ]
+                "language_code": "pl",
+                "language_name": "Polish",
+                "language_level": choice(["A1", "A2", "B1", "B2", "C1"]),
+            })
+
+        for cc in country_codes[1:]:
+            lang = COUNTRY_LANGUAGE_MAP[cc]
+            if lang["language_code"] not in seen_codes:
+                seen_codes.add(lang["language_code"])
+                langs.append({
+                    "id": str(uuid.uuid4()),
+                    "person_id": person_id,
+                    "language_code": lang["language_code"],
+                    "language_name": lang["language_name"],
+                    "language_level": choice(["B2", "C1", "C2"]),
+                })
+
+        if randint(0, 100) < 50:
+            extra_pool = [l for l in LANGUAGES if l["language_code"] not in seen_codes]
+            if extra_pool:
+                extra = choice(extra_pool)
+                seen_codes.add(extra["language_code"])
+                langs.append({
+                    "id": str(uuid.uuid4()),
+                    "person_id": person_id,
+                    "language_code": extra["language_code"],
+                    "language_name": extra["language_name"],
+                    "language_level": choice(LANGUAGE_LEVELS),
+                })
+
+        return langs
 
     def generate_customer(self):
         correlation_id.set(str(uuid.uuid4())[:8])
         account = self._generate_account()
+        account['correlation_id']=correlation_id.get()
         person_id = account["person_id"]
         registration_date = account["registration_date"]
         date_of_birth = account["birth_date"]
         civil_status = account["civil_status"]
+        country_code = account["country_code"]
 
         contact_channels = self._generate_contact_channels(person_id)
         email = next((ch["value"] for ch in contact_channels if ch["channel_type"] == "email"), None)
 
+        nationalities = self._generate_nationalities(person_id, country_code)
+
         return {
-            "correlation_id": correlation_id.get(),
+            # "correlation_id": correlation_id.get(),
             "account": account,
             "loyalty": self._generate_loyalty(person_id, registration_date),
-            "address_channels": [self._generate_address_channel(person_id)],
+            "nationalities": nationalities,
+            "address_channels": self._generate_address_channels(person_id),
             "contact_channels": contact_channels,
             "communication_subscriptions": self._generate_communication_subscriptions(person_id),
             "digital_access": self._generate_digital_access(person_id, email),
             "account_indicators": self._generate_account_indicators(person_id,date_of_birth,civil_status),
-            "languages": self._generate_languages(person_id),
+            "languages": self._generate_languages(person_id, nationalities),
         }
 
 
