@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dead Letter Management</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+        .header { background: #1a1a2e; color: white; padding: 20px 32px; }
+        .header h1 { font-size: 1.4rem; }
+        .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th { background: #16213e; color: white; padding: 12px 16px; text-align: left; font-size: 0.85rem; text-transform: uppercase; }
+        td { padding: 10px 16px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        tr:hover { background: #f0f4ff; }
+        .status { padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+        .status-NEW { background: #fff3cd; color: #856404; }
+        .status-RESUBMITTED { background: #d4edda; color: #155724; }
+        .status-FAILED { background: #f8d7da; color: #721c24; }
+
+        /* Buttons */
+        .btn { border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+        .btn-edit { background: #4a90d9; color: white; }
+        .btn-edit:hover { background: #357abd; }
+        .btn-resubmit { background: #28a745; color: white; }
+        .btn-resubmit:hover { background: #218838; }
+        .btn-cancel { background: #6c757d; color: white; }
+        .btn-save { background: #007bff; color: white; }
+
+        /* Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 12px; padding: 28px; width: 600px; max-height: 80vh; overflow-y: auto; }
+        .modal h2 { margin-bottom: 20px; font-size: 1.2rem; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: #555; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; font-family: inherit; }
+        .form-group textarea { min-height: 120px; font-family: monospace; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        .modal-actions .btn { padding: 8px 20px; font-size: 0.9rem; }
+
+        .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 24px; border-radius: 8px; color: white; font-weight: 600; z-index: 200; display: none; }
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        .empty { text-align: center; padding: 40px; color: #999; }
+        .payload-preview { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 0.8rem; color: #666; }
+        .readonly { background: #f0f0f0; color: #888; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Dead Letter Management</h1>
+    </div>
+
+    <div class="container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Status</th>
+                    <th>Error Code</th>
+                    <th>Error Message</th>
+                    <th>Person ID</th>
+                    <th>Source</th>
+                    <th>Retries</th>
+                    <th>Payload</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <tr><td colspan="9" class="empty">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <h2>Edit Dead Letter #<span id="edit-id"></span></h2>
+            <div class="form-group">
+                <label>Error Code</label>
+                <input type="text" id="edit-error_code" readonly class="readonly">
+            </div>
+            <div class="form-group">
+                <label>Error Message</label>
+                <input type="text" id="edit-error_message" readonly class="readonly">
+            </div>
+            <div class="form-group">
+                <label>Person ID</label>
+                <input type="text" id="edit-person_id" readonly class="readonly">
+            </div>
+            <div class="form-group">
+                <label>Correlation ID</label>
+                <input type="text" id="edit-correlation_id" readonly class="readonly">
+            </div>
+            <div class="form-group">
+                <label>Source Application</label>
+                <input type="text" id="edit-source_application" readonly class="readonly">
+            </div>
+            <div class="form-group">
+                <label>Raw Payload (JSON)</label>
+                <textarea id="edit-raw_payload"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-save" onclick="saveEdit()">Save</button>
+                <button class="btn btn-resubmit" onclick="saveAndResubmit()">Save & Resubmit</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+<script>
+    const API = '/crm';
+    let currentId = null;
+
+    async function loadDeadLetters() {
+        const res = await fetch(`${API}/dead_letters`);
+        const data = await res.json();
+        const tbody = document.getElementById('table-body');
+
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="empty">No dead letters found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(dl => `
+            <tr>
+                <td>${dl.id}</td>
+                <td><span class="status status-${dl.status}">${dl.status}</span></td>
+                <td>${dl.error_code || '-'}</td>
+                <td>${dl.error_message || '-'}</td>
+                <td>${dl.person_id || '-'}</td>
+                <td>${dl.source_application || '-'}</td>
+                <td>${dl.retry_count}</td>
+                <td class="payload-preview" title='${JSON.stringify(dl.raw_payload)}'>${JSON.stringify(dl.raw_payload)}</td>
+                <td>
+                    <button class="btn btn-edit" onclick="openEdit(${dl.id})">Edit</button>
+                    <button class="btn btn-resubmit" onclick="resubmit(${dl.id})">Resubmit</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function openEdit(id) {
+        const res = await fetch(`${API}/dead_letters/${id}`);
+        const dl = await res.json();
+        currentId = id;
+        document.getElementById('edit-id').textContent = id;
+        document.getElementById('edit-error_code').value = dl.error_code || '';
+        document.getElementById('edit-error_message').value = dl.error_message || '';
+        document.getElementById('edit-person_id').value = dl.person_id || '';
+        document.getElementById('edit-correlation_id').value = dl.correlation_id || '';
+        document.getElementById('edit-source_application').value = dl.source_application || '';
+        document.getElementById('edit-raw_payload').value = JSON.stringify(dl.raw_payload, null, 2);
+        document.getElementById('modal').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('modal').classList.remove('active');
+        currentId = null;
+    }
+
+    function getFormData() {
+        const raw = document.getElementById('edit-raw_payload').value;
+        try { JSON.parse(raw); } catch { showToast('Invalid JSON in payload', 'error'); return null; }
+        return { raw_payload: JSON.parse(raw) };
+    }
+
+    async function saveEdit() {
+        const body = getFormData();
+        if (!body) return;
+        const res = await fetch(`${API}/dead_letters/${currentId}`, {
+            method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+        });
+        if (res.ok) { showToast('Saved', 'success'); closeModal(); loadDeadLetters(); }
+        else { showToast('Save failed', 'error'); }
+    }
+
+    async function saveAndResubmit() {
+        const body = getFormData();
+        if (!body) return;
+        let res = await fetch(`${API}/dead_letters/${currentId}`, {
+            method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+        });
+        if (!res.ok) { showToast('Save failed', 'error'); return; }
+        res = await fetch(`${API}/dead_letters/${currentId}/resubmit`, { method: 'POST' });
+        if (res.ok) { showToast('Saved & resubmitted to Kafka', 'success'); closeModal(); loadDeadLetters(); }
+        else { showToast('Resubmit failed', 'error'); }
+    }
+
+    async function resubmit(id) {
+        if (!confirm(`Resubmit dead letter #${id} to Kafka?`)) return;
+        const res = await fetch(`${API}/dead_letters/${id}/resubmit`, { method: 'POST' });
+        if (res.ok) { showToast('Resubmitted to Kafka', 'success'); loadDeadLetters(); }
+        else { showToast('Resubmit failed', 'error'); }
+    }
+
+    function showToast(msg, type) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = `toast ${type}`;
+        t.style.display = 'block';
+        setTimeout(() => t.style.display = 'none', 3000);
+    }
+
+    loadDeadLetters();
+</script>
+</body>
+</html>
