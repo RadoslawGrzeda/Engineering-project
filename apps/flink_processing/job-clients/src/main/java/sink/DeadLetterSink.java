@@ -1,5 +1,4 @@
-package sink; import dto.Client;
-
+package sink; import config.DeadLetter;
 
 
 import org.apache.flink.connector.jdbc.JdbcStatementBuilder;

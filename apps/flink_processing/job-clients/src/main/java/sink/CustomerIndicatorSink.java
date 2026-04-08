@@ -1,4 +1,6 @@
-package sink; import dto.Client;
+package sink; import config.DeadLetter;
+import config.JdbcProcessSink;
+import dto.Client;
 
 
 
@@ -7,14 +9,17 @@ import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.util.OutputTag;
 
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
 public class CustomerIndicatorSink extends JdbcProcessSink<Client> {
     public  static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("customer_indicator_dead_letter", TypeInformation.of(DeadLetter.class));
     public static final String SQL = "INSERT INTO client.customer_indicator (person_id, type, is_active, created_at, updated_at, correlation_id)" +
-                                    " VALUES (?, ?, ?, ?, ?, ?)";
+                                    " VALUES (?, ?, ?, ?, ?, ?)" +
+                                    " ON CONFLICT (person_id, type) DO UPDATE SET" +
+                                    " is_active = EXCLUDED.is_active," +
+                                    " updated_at = EXCLUDED.updated_at," +
+                                    " correlation_id = EXCLUDED.correlation_id";
 
     @Override
     protected String getSQL() {

@@ -1,4 +1,6 @@
-package sink; import dto.Client;
+package sink; import config.DeadLetter;
+import config.JdbcProcessSink;
+import dto.Client;
 
 
 
@@ -7,7 +9,6 @@ import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.util.OutputTag;
 
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
@@ -15,7 +16,14 @@ public class ContactChannelSink extends JdbcProcessSink<Client.ContactChannel> {
     public static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("contact_channel_dead_letter", TypeInformation.of(DeadLetter.class));
     public static final String SQL = "INSERT INTO client.contact (person_id, contact_type, value, flag_main_type," +
                                     " preferred_channel, option_channel, flag_valid, created_at, updated_at, correlation_id)" +
-                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" +
+                                    " ON CONFLICT (person_id, contact_type, value) DO UPDATE SET" +
+                                    " flag_main_type = EXCLUDED.flag_main_type," +
+                                    " preferred_channel = EXCLUDED.preferred_channel," +
+                                    " option_channel = EXCLUDED.option_channel," +
+                                    " flag_valid = EXCLUDED.flag_valid," +
+                                    " updated_at = EXCLUDED.updated_at," +
+                                    " correlation_id = EXCLUDED.correlation_id";
 
     @Override
     protected String getSQL() {

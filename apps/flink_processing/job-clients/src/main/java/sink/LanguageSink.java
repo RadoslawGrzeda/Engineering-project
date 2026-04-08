@@ -1,4 +1,6 @@
-package sink; import dto.Client;
+package sink; import config.DeadLetter;
+import config.JdbcProcessSink;
+import dto.Client;
 
 
 
@@ -7,13 +9,16 @@ import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.util.OutputTag;
 
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
 public class LanguageSink extends JdbcProcessSink<Client.Language> {
     public static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("language_dead_letter", TypeInformation.of(DeadLetter.class));
-    public static final String SQL = "INSERT INTO client.language (person_id, language_code, language_level, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?, ?)";
+    public static final String SQL = "INSERT INTO client.language (person_id, language_code, language_level, created_at, updated_at, correlation_id) VALUES (?, ?, ?, ?, ?, ?)" +
+                                    " ON CONFLICT (person_id, language_code) DO UPDATE SET" +
+                                    " language_level = EXCLUDED.language_level," +
+                                    " updated_at = EXCLUDED.updated_at," +
+                                    " correlation_id = EXCLUDED.correlation_id";
 
     @Override
     protected String getSQL() {

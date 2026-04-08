@@ -1,4 +1,6 @@
-package sink; import dto.Client;
+package sink; import config.DeadLetter;
+import config.JdbcProcessSink;
+import dto.Client;
 
 
 
@@ -8,12 +10,15 @@ import org.apache.flink.util.OutputTag;
 
 import java.sql.Date;
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
 
 public class LoyaltyStatusSink extends JdbcProcessSink<Client> {
     public static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("loyalty_status_dead_letter", TypeInformation.of(DeadLetter.class));
-    public static final String SQL = "INSERT INTO client.loyalty_status (identifier_id, status_code, is_current, start_date, end_date, correlation_id)" +
-                                    " VALUES (?, ?, ?, ?, ?, ?)";
+    public static final String SQL = "INSERT INTO client.loyalty_status (identifier_id, person_id, status_code, is_current, start_date, end_date, correlation_id)" +
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?)" +
+                                    " ON CONFLICT (identifier_id, person_id, status_code, start_date) DO UPDATE SET" +
+                                    " is_current = EXCLUDED.is_current," +
+                                    " end_date = EXCLUDED.end_date," +
+                                    " correlation_id = EXCLUDED.correlation_id";
 
     @Override
     protected String getSQL() {
@@ -25,19 +30,20 @@ public class LoyaltyStatusSink extends JdbcProcessSink<Client> {
         return (PreparedStatement preparedStatement, Client client) -> {
             Client.Loyalty loyalty = client.getLoyalty();
             preparedStatement.setString(1, client.getPersonId());
-            preparedStatement.setString(2, loyalty.getLoyaltyStatus());
-            preparedStatement.setBoolean(3, true);
+            preparedStatement.setString(2, client.getPersonId());
+            preparedStatement.setString(3, loyalty.getLoyaltyStatus());
+            preparedStatement.setBoolean(4, true);
             if (loyalty.getStartDate() != null) {
-                preparedStatement.setDate(4, Date.valueOf(loyalty.getStartDate()));
-            } else {
-                preparedStatement.setNull(4, java.sql.Types.DATE);
-            }
-            if (loyalty.getEndDate() != null) {
-                preparedStatement.setDate(5, Date.valueOf(loyalty.getEndDate()));
+                preparedStatement.setDate(5, Date.valueOf(loyalty.getStartDate()));
             } else {
                 preparedStatement.setNull(5, java.sql.Types.DATE);
             }
-            preparedStatement.setString(6, client.getAccount().getCorrelation_id());
+            if (loyalty.getEndDate() != null) {
+                preparedStatement.setDate(6, Date.valueOf(loyalty.getEndDate()));
+            } else {
+                preparedStatement.setNull(6, java.sql.Types.DATE);
+            }
+            preparedStatement.setString(7, client.getAccount().getCorrelation_id());
         };
     }
 
