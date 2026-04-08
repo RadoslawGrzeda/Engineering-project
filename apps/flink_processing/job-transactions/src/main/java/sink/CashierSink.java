@@ -32,6 +32,7 @@ public class CashierSink extends JdbcProcessSink<Transaction> {
     @Override
     protected JdbcStatementBuilder<Transaction> getStatementBuilder() {
         return (PreparedStatement ps, Transaction tx) -> {
+            String correlationId = tx.getCorrelationId();
             Transaction.TransactionHeader h = tx.getTransaction();
             ps.setString(1, h.getCashierId());
             ps.setString(2, h.getLocationCode());

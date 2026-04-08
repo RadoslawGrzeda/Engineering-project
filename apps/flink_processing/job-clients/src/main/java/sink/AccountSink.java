@@ -1,24 +1,33 @@
-package sink; import dto.Client;
+package sink; import config.DeadLetter;
+import config.JdbcProcessSink;
+import dto.Client;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 
 import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.util.OutputTag;
 
-import java.sql.Date;
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class AccountSink extends JdbcProcessSink<Client> {
 
     public static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("account_dead_letter", TypeInformation.of(DeadLetter.class));
     public static final String SQL = "INSERT INTO client.customer (" +
-                                    "person_id, first_name, middle_name, last_name, birth_date, passport_number, gender_code," +
+                                    "person_id, first_name, middle_name, last_name, birth_date, passport_number, gender_code, civil_status_code," +
                                     "registration_date, creation_application, created_at, updated_at, correlation_id)" +
-                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" +
+                                    " ON CONFLICT (person_id) DO UPDATE SET" +
+                                    " first_name = EXCLUDED.first_name," +
+                                    " middle_name = EXCLUDED.middle_name," +
+                                    " last_name = EXCLUDED.last_name," +
+                                    " birth_date = EXCLUDED.birth_date," +
+                                    " passport_number = EXCLUDED.passport_number," +
+                                    " gender_code = EXCLUDED.gender_code," +
+                                    " civil_status_code = EXCLUDED.civil_status_code," +
+                                    " updated_at = EXCLUDED.updated_at," +
+                                    " correlation_id = EXCLUDED.correlation_id";
 
 //    public void accept(PreparedStatement statement, Client client) throws SQLException {
 //        statement.setString(1, client.getPersonId());
@@ -50,11 +59,12 @@ public class AccountSink extends JdbcProcessSink<Client> {
             statement.setDate(5, client.getAccount().getBirthDate());
             statement.setString(6, client.getAccount().getPassportNumber() == null ? null : client.getAccount().getPassportNumber().toUpperCase());
             statement.setString(7, client.getAccount().getGenderCode());
-            statement.setDate(8, client.getAccount().getRegistrationDate());
-            statement.setString(9, client.getAccount().getCreationApplication());
-            statement.setTimestamp(10, Timestamp.valueOf(LocalDateTime.now()));
+            statement.setString(8, client.getAccount().getCivilStatus());
+            statement.setDate(9, client.getAccount().getRegistrationDate());
+            statement.setString(10, client.getAccount().getCreationApplication());
             statement.setTimestamp(11, Timestamp.valueOf(LocalDateTime.now()));
-            statement.setString(12, client.getAccount().getCorrelation_id());
+            statement.setTimestamp(12, Timestamp.valueOf(LocalDateTime.now()));
+            statement.setString(13, client.getAccount().getCorrelation_id());
         };
     }
 
