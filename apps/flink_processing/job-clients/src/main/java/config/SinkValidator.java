@@ -1,7 +1,6 @@
-package validator; import dto.Client;
+package config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import sink.DeadLetter;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
@@ -64,7 +63,9 @@ public abstract class SinkValidator<T> extends ProcessFunction<T, T> {
     protected static LocalDate parseDate(String date) {
         if (isBlank(date)) return null;
         try {
-            String datePart = date.contains(" ") ? date.split(" ")[0] : date;
+            String datePart = date.contains("T") ? date.split("T")[0]
+                            : date.contains(" ") ? date.split(" ")[0]
+                            : date;
             return LocalDate.parse(datePart);
         } catch (DateTimeParseException e) {
             return null;
