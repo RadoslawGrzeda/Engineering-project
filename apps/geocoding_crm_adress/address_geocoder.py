@@ -18,7 +18,7 @@ class AddressGeocoder:
         for attempt in range(1, GEOCODE_MAX_RETRIES + 1):
             try:
                 location = self.nominatim.geocode(address, timeout=GEOCODE_TIMEOUT)
-                sleep(2)
+                sleep(1.2)
                 if not location:
                     return None, None
                 return location.latitude, location.longitude
