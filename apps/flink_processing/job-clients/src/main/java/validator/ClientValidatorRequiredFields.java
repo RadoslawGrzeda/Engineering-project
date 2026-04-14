@@ -2,7 +2,7 @@ package validator; import dto.Client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import sink.DeadLetter;
+import config.DeadLetter;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
@@ -111,6 +111,10 @@ public class ClientValidatorRequiredFields extends ProcessFunction<Client, Clien
     private static void validateContactChannels(List<Client.ContactChannel> channels, List<String> errors) {
 
         boolean hasValidEmail = false;
+        if(channels == null || channels.isEmpty()) {
+            errors.add("no valid email in contact_channels");
+            return;
+        }
 
         for (int i = 0; i < channels.size(); i++) {
             Client.ContactChannel ch = channels.get(i);

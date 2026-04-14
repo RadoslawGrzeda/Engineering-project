@@ -1,4 +1,5 @@
-package validator; import dto.Client;
+package validator; import config.SinkValidator;
+import dto.Client;
 
 
 
@@ -9,7 +10,7 @@ import java.util.List;
 public class LoyaltyValidator extends SinkValidator<Client> {
 
     private static final List<String> VALID_LOYALTY_STATUSES =
-            List.of("BRONZE", "SILVER", "GOLD", "PLATINUM");
+            List.of("Bronze", "Silver", "Gold", "Platinum");
 
     @Override
     protected List<String> validate(Client client) {
@@ -54,5 +55,10 @@ public class LoyaltyValidator extends SinkValidator<Client> {
     @Override
     protected String sinkName() {
         return "LOYALTY_STATUS";
+    }
+
+    @Override
+    protected Client getRawPayload(Client element) {
+        return element;
     }
 }

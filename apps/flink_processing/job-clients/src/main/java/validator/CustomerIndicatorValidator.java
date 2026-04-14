@@ -1,4 +1,5 @@
-package validator; import dto.Client;
+package validator; import config.SinkValidator;
+import dto.Client;
 
 
 
@@ -32,5 +33,10 @@ public class CustomerIndicatorValidator extends SinkValidator<Client> {
     @Override
     protected String sinkName() {
         return "CUSTOMER_INDICATOR";
+    }
+
+    @Override
+    protected Client getRawPayload(Client element) {
+        return element;
     }
 }

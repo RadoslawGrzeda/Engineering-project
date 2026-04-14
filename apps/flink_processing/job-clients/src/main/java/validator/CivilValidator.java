@@ -40,4 +40,9 @@ public class CivilValidator extends SinkValidator<Client> {
     protected String sinkName() {
         return "CIVIL";
     }
+
+    @Override
+    protected Client getRawPayload(Client element) {
+        return element.getAccount().getClient();
+    }
 }
