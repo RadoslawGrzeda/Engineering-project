@@ -57,4 +57,9 @@ public class  CountriesSink extends JdbcProcessSink<Client.Nationality> {
     protected OutputTag<DeadLetter> getDeadLetterTag() {
         return DEAD_LETTER;
     }
+
+    @Override
+    protected Client getRawPayload(Client.Nationality element) {
+        return element.getClient();
+    }
 }

@@ -19,7 +19,6 @@ public class LanguageSink extends JdbcProcessSink<Client.Language> {
                                     " language_level = EXCLUDED.language_level," +
                                     " updated_at = EXCLUDED.updated_at," +
                                     " correlation_id = EXCLUDED.correlation_id";
-
     @Override
     protected String getSQL() {
         return SQL;
@@ -45,6 +44,11 @@ public class LanguageSink extends JdbcProcessSink<Client.Language> {
     @Override
     protected String getCorrelation_id(Client.Language element) {
         return element.getCorrelation_id();
+    }
+
+    @Override
+    protected Client getRawPayload(Client.Language element) {
+        return element.getClient();
     }
 
     @Override
