@@ -60,7 +60,7 @@ public class AccountSink extends JdbcProcessSink<Client> {
             statement.setString(6, client.getAccount().getPassportNumber() == null ? null : client.getAccount().getPassportNumber().toUpperCase());
             statement.setString(7, client.getAccount().getGenderCode());
             statement.setString(8, client.getAccount().getCivilStatus());
-            statement.setDate(9, client.getAccount().getRegistrationDate());
+            statement.setTimestamp(9, Timestamp.valueOf(client.getAccount().getRegistrationDate()));
             statement.setString(10, client.getAccount().getCreationApplication());
             statement.setTimestamp(11, Timestamp.valueOf(LocalDateTime.now()));
             statement.setTimestamp(12, Timestamp.valueOf(LocalDateTime.now()));
@@ -76,6 +76,11 @@ public class AccountSink extends JdbcProcessSink<Client> {
     @Override
     protected String getCorrelation_id(Client client) {
         return client.getAccount().getCorrelation_id();
+    }
+
+    @Override
+    protected Client getRawPayload(Client element) {
+        return element;
     }
 
     @Override

@@ -37,12 +37,12 @@ public class CommunicationSubscriptionSink extends JdbcProcessSink<Client.Commun
             preparedStatement.setString(2, comm.getCommunityCode());
             preparedStatement.setString(3, comm.getCommunityCodeValue());
             if (comm.getDateOfSubscription() != null) {
-                preparedStatement.setTimestamp(4, Timestamp.valueOf(comm.getDateOfSubscription().replace("T", " ")));
+                preparedStatement.setTimestamp(4, Timestamp.valueOf(comm.getDateOfSubscription()));
             } else {
                 preparedStatement.setNull(4, java.sql.Types.TIMESTAMP);
             }
             if (comm.getDateOfUnsubscription() != null) {
-                preparedStatement.setTimestamp(5, Timestamp.valueOf(comm.getDateOfUnsubscription().replace("T", " ")));
+                preparedStatement.setTimestamp(5, Timestamp.valueOf(comm.getDateOfUnsubscription()));
             } else {
                 preparedStatement.setNull(5, java.sql.Types.TIMESTAMP);
             }
@@ -76,5 +76,10 @@ public class CommunicationSubscriptionSink extends JdbcProcessSink<Client.Commun
     @Override
     protected OutputTag<DeadLetter> getDeadLetterTag() {
         return DEAD_LETTER;
+    }
+
+    @Override
+    protected Client getRawPayload(Client.CommunicationSubscription element) {
+        return element.getClient();
     }
 }

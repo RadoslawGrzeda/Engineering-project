@@ -46,7 +46,11 @@ public class ContactChannelSink extends JdbcProcessSink<Client.ContactChannel> {
             } else {
                 preparedStatement.setNull(5, java.sql.Types.BOOLEAN);
             }
-            preparedStatement.setString(6, contactChannel.getOptionChannel());
+            if (contactChannel.getOptionChannel() != null) {
+                preparedStatement.setBoolean(6, contactChannel.getOptionChannel());
+            } else {
+                preparedStatement.setBoolean(6, true);
+            }
             if (contactChannel.getFlagValid() != null) {
                 preparedStatement.setBoolean(7, contactChannel.getFlagValid());
             } else {
@@ -81,5 +85,9 @@ public class ContactChannelSink extends JdbcProcessSink<Client.ContactChannel> {
     @Override
     protected OutputTag<DeadLetter> getDeadLetterTag() {
         return DEAD_LETTER;
+    }
+    @Override
+    protected Client getRawPayload(Client.ContactChannel element) {
+        return element.getClient();
     }
 }

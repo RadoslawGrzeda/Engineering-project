@@ -67,4 +67,9 @@ public class CustomerIndicatorSink extends JdbcProcessSink<Client> {
     protected OutputTag<DeadLetter> getDeadLetterTag() {
         return DEAD_LETTER;
     }
+
+    @Override
+    protected Client getRawPayload(Client element) {
+        return element;
+    }
 }

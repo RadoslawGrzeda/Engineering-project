@@ -67,6 +67,11 @@ public class DigitalAccessSink extends JdbcProcessSink<Client> {
     }
 
     @Override
+    protected Client getRawPayload(Client element) {
+        return element;
+    }
+
+    @Override
     protected String errorTag() {
         return "Error in DigitalAccess Sink";
     }
