@@ -1,4 +1,5 @@
 from kafka import KafkaConsumer
+from kafka.errors import CommitFailedError
 import json
 import os
 import logging
@@ -39,6 +40,8 @@ class GeocodingConsumer:
             group_id=self.KAFKA_GROUP_ID,
             auto_offset_reset='earliest',
             enable_auto_commit=False,
+            max_poll_records=10,
+            max_poll_interval_ms=600000,
             value_deserializer=lambda m: json.loads(m.decode('utf-8'))
         )
 
@@ -102,7 +105,12 @@ class GeocodingConsumer:
                     if conn:
                         self._put_conn(conn)
 
-                self.consumer.commit()
+                try:
+                    self.consumer.commit()
+                except CommitFailedError:
+                    logger.warning(
+                        "Commit failed — consumer was removed from group, will rejoin on next poll"
+                    )
 
         except Exception:
             logger.exception("Fatal error in geocoding consumer loop")
