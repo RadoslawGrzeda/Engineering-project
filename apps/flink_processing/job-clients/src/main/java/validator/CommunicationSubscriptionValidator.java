@@ -1,4 +1,5 @@
-package validator; import dto.Client;
+package validator; import config.SinkValidator;
+import dto.Client;
 
 
 
@@ -7,6 +8,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CommunicationSubscriptionValidator extends SinkValidator<Client.CommunicationSubscription> {
+
+    @Override
+    protected Client getRawPayload(Client.CommunicationSubscription element) {
+        return element.getClient();
+    }
 
     @Override
     protected List<String> validate(Client.CommunicationSubscription comm) {

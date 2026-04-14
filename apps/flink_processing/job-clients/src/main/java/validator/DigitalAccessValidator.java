@@ -1,4 +1,5 @@
-package validator; import dto.Client;
+package validator; import config.SinkValidator;
+import dto.Client;
 
 
 
@@ -10,6 +11,11 @@ public class DigitalAccessValidator extends SinkValidator<Client> {
 
     private static final Pattern EMAIL_PATTERN =
             Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    @Override
+    protected Client getRawPayload(Client element) {
+        return element;
+    }
 
     @Override
     protected List<String> validate(Client client) {

@@ -23,6 +23,11 @@ public class AddressValidator extends SinkValidator<Client.AddressChannel> {
     );
 
     @Override
+    protected Client getRawPayload(Client.AddressChannel element) {
+        return element.getClient();
+    }
+
+    @Override
     protected List<String> validate(Client.AddressChannel addr) {
         List<String> errors = new ArrayList<>();
 

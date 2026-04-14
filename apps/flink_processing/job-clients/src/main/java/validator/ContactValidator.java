@@ -1,4 +1,5 @@
-package validator; import dto.Client;
+package validator; import config.SinkValidator;
+import dto.Client;
 
 
 
@@ -16,6 +17,11 @@ public class ContactValidator extends SinkValidator<Client.ContactChannel> {
 
     private static final List<String> VALID_CONTACT_TYPES =
             List.of("email", "phone", "sms");
+
+    @Override
+    protected Client getRawPayload(Client.ContactChannel element) {
+        return element.getClient();
+    }
 
     @Override
     protected List<String> validate(Client.ContactChannel contact) {
