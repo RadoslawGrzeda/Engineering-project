@@ -33,7 +33,7 @@ public abstract class JdbcProcessSink<T> extends ProcessFunction<T, T> {
 
     @Override
     public void open(Configuration parameters) throws SQLException {
-        JdbcConnectionOptions connOptions = FlinkJdbcConfig.connOption();
+        JdbcConnectionOptions connOptions = FlinkClickHouseConfig.connOption();
         connection = DriverManager.getConnection(
                 connOptions.getDbURL(),
                 connOptions.getUsername().orElse(null),
