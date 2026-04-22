@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS gold.fact_transactions
     transaction_id    String,
     transaction_date  DateTime64(6, 'UTC'),
     location_code     LowCardinality(String),
-    identifier_no     String,
+    identifier_no     Nullable(String) ,
     pos_id            LowCardinality(String),
     cashier_id        LowCardinality(String),
     currency_code     LowCardinality(String),
