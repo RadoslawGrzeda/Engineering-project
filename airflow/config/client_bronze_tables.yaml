@@ -1,0 +1,23 @@
+defaults:
+  order_by: tuple()
+  engine: MergeTree
+
+tables:
+  - source: client.address
+  - source: client.communication_subscription
+  - source: client.contact
+  - source: client.country_language
+  - source: client.customer
+  - source: client.customer_indicator
+  - source: client.dict_civil
+  - source: client.dict_contact
+  - source: client.dict_country
+  - source: client.dict_gender
+  - source: client.dict_indicator
+  - source: client.dict_language
+  - source: client.dict_loyalty_status
+  - source: client.dict_subscription
+  - source: client.digital_access
+  - source: client.language
+  - source: client.loyalty_status
+  - source: client.nationality
