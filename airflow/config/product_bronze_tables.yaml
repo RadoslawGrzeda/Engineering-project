@@ -1,0 +1,12 @@
+defaults:
+  order_by: tuple()
+  engine: MergeTree
+
+tables:
+  - source: product.chief
+  - source: product.contract
+  - source: product.contractor
+  - source: product.department
+  - source: product.pos_information
+  - source: product.product
+  - source: product.sector
