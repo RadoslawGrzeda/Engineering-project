@@ -4,37 +4,81 @@ services:
   jobmanager:
     image: flink:1.20.3-java17
     container_name: flink-jobmanager
+    restart: always
     ports:
       - "8081:8081"
     command: jobmanager
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/overview || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     environment:
-      - |
-        FLINK_PROPERTIES=
+      FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
         jobmanager.memory.process.size: 1600m
+        s3.endpoint: ${MINIO_ENDPOINT}
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ACCESS_KEY}
+        s3.secret-key: ${MINIO_SECRET_KEY}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL}
+      POSTGRES_USER: ${POSTGRES_USER:-ods}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_URL: ${POSTGRES_URL}
     volumes:
       - ../apps/flink_processing/job-clients/target:/opt/flink/usrlib/clients
       - ../apps/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
+      - ./conf/log4j-console.properties:/opt/flink/conf/log4j-console.properties
+      - ./conf/logTemplate.json:/opt/flink/conf/logTemplate.json
+      - ./conf/log4j-layout-template-json-2.24.3.jar:/opt/flink/lib/log4j-layout-template-json-2.24.3.jar
+      - ./plugins/flink-s3-fs-hadoop-1.20.3.jar:/opt/flink/plugins/s3-fs-hadoop/flink-s3-fs-hadoop-1.20.3.jar
     networks:
       - traefik_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   taskmanager:
     image: flink:1.20.3-java17
     container_name: flink-taskmanager
+    restart: always
     depends_on:
       - jobmanager
     command: taskmanager
     environment:
-      - |
-        FLINK_PROPERTIES=
+      FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
         taskmanager.memory.process.size: 1728m
         taskmanager.numberOfTaskSlots: 2
+        s3.endpoint: ${MINIO_ENDPOINT}
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ACCESS_KEY}
+        s3.secret-key: ${MINIO_SECRET_KEY}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL}
+      POSTGRES_USER: ${POSTGRES_USER:-ods}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_URL: ${POSTGRES_URL}
     volumes:
       - ../apps/flink_processing/job-clients/target:/opt/flink/usrlib/clients
       - ../apps/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
+      - ./conf/log4j-console.properties:/opt/flink/conf/log4j-console.properties
+      - ./conf/logTemplate.json:/opt/flink/conf/logTemplate.json
+      - ./conf/log4j-layout-template-json-2.24.3.jar:/opt/flink/lib/log4j-layout-template-json-2.24.3.jar
+      - ./plugins/flink-s3-fs-hadoop-1.20.3.jar:/opt/flink/plugins/s3-fs-hadoop/flink-s3-fs-hadoop-1.20.3.jar
     networks:
       - traefik_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   traefik_network:
