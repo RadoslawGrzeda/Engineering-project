@@ -10,7 +10,7 @@ load_dotenv()
 
 class CrmProducer:
     """
-    Class responsible from simulating real CRM mechanism
+    Class responsible for simulating a real CRM mechanism
     and generate event with registered user
     """
 
@@ -31,6 +31,15 @@ class CrmProducer:
 
 if __name__ == "__main__":
     crm = CrmProducer()
-    while True:
-        print(crm.generate_person())
-        time.sleep(5)
+    try:
+        while True:
+            print(crm.generate_person())
+            time.sleep(10)
+    except KeyboardInterrupt:
+        print("\nShutdown complete.")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        crm.generator._flush_counter()
+        crm.producer.flush()
+
