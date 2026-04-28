@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: bronze
+    tables:
+      - name: client__address
+      - name: client__communication_subscription
+      - name: client__contact
+      - name: client__country_language
+      - name: client__customer
+      - name: client__customer_indicator
+      - name: client__dict_civil
+      - name: client__dict_contact
+      - name: client__dict_country
+      - name: client__dict_gender
+      - name: client__dict_indicator
+      - name: client__dict_language
+      - name: client__dict_loyalty_status
+      - name: client__dict_subscription
+      - name: client__digital_access
+      - name: client__language
+      - name: client__loyalty_status
+      - name: client__nationality

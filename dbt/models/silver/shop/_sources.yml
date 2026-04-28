@@ -1,0 +1,12 @@
+version: 2 
+
+
+sources:
+  - name: bronze
+    database: bronze
+    tables:
+        - name: store__site
+        - name: store__site_address
+        - name: store__site_contact
+        - name: store__site_format
+        - name: store__site_info
