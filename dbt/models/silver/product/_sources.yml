@@ -1,0 +1,15 @@
+version: 2 
+
+sources:
+  - name: bronze
+    database: bronze
+    tables:
+      - name: product__chief
+      - name: product__contract
+      - name: product__contractor
+      - name: product__department
+      - name: product__pos_information
+      - name: product__product
+      - name: product__sector
+      - name: product__segment
+      - name: product__segment_chief
