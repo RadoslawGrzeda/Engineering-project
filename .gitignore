@@ -1,3 +1,4 @@
+# Environment files
 .env
 .env.local
 .env.development.local
@@ -6,6 +7,51 @@
 .env.development
 .env.test
 .env.production
-/apps/streamLit/.env
-/miniIO/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/
+
+# Java / Maven
+target/
+*.class
+*.jar
+!apps/flink_processing/**/lib/*.jar
+!flink/plugins/**/*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
 apps/load_file_develop/data/
+.claude
+
+# Logs
+*.log
+airflow/logs/
+/clickhouse/config/users.xml
+/clickhouse/.env
+/flink/conf/logTemplate.json
+/flink/.env
+/flink/plugins/
+/flink/conf/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+dbt/.env
+dbt/profiles.yml
