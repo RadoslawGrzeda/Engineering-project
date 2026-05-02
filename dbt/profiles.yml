@@ -1,0 +1,20 @@
+config:
+  send_anonymous_usage_stats: false
+
+dbt:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      host: localhost
+      port: 8123
+      user: AdministratorClick
+      password: Qwerty1234
+      schema: silver
+      secure: false
+      verify: false
+      connect_timeout: 10
+      send_receive_timeout: 300
+      sync_request_timeout: 5
+      compression: lz4
+      threads: 4
