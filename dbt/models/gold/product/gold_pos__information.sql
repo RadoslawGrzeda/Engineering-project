@@ -1,25 +1,26 @@
-with source as (
-   select
-    id,
-    art_key,
-    ean,
-    vat_rate,
-    price_net,
-    price_gross,
-    valid_from,
-    valid_to,
-    is_current
-    from 
-    {{ source('silver', 'stg_pos__information') }}
+with pos as (
+    select
+        id as pos_information_id,
+        art_key,
+        ean,
+        vat_rate,
+        price_net,
+        price_gross,
+        valid_from,
+        valid_to,
+        is_current
+    from {{ ref('stg_product__pos_information') }}
 )
-select 
-    id,
+select
+    pos_information_id,
     art_key,
     ean,
-    vat_rate,
     price_net,
     price_gross,
+    vat_rate,
+    is_current,
     valid_from,
     valid_to,
-    case when is_current = 1 then 1 else 0 end as is_current
-from source
+    now() as created_at,
+    now() as updated_at
+from pos
