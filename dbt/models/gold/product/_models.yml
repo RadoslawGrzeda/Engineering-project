@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: gold_chief
+    description: "Wymiar kierownikow segmentow."
+    columns:
+      - name: chief_id
+        description: "Identyfikator kierownika z systemu zrodlowego."
+        tests:
+          - not_null
+          - unique
+
+  - name: gold_segment_chief
+    description: "Wymiar przypisania kierownikow do segmentow z denormalizacja kodu segmentu."
+    columns:
+      - name: segment_chief_id
+        tests:
+          - not_null
+          - unique
+      - name: chief_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('gold_chief')
+              field: chief_id
+
+  - name: gold_product
+    description: "Wymiar produktow z pelna denormalizacja hierarchii (department, sector, segment, contractor) - star schema."
+    columns:
+      - name: product_key
+        description: "Surrogate key wyliczany jako cityHash64(art_key)."
+        tests:
+          - not_null
+          - unique
+      - name: art_key
+        description: "Naturalny klucz produktu z systemu zrodlowego."
+        tests:
+          - not_null
+
+  - name: gold_pos__information
+    description: "Wymiar informacji o cenach POS - SCD2 (jeden produkt ma N rekordow cenowych w czasie)."
+    columns:
+      - name: pos_information_id
+        tests:
+          - not_null
+      - name: art_key
+        description: "FK do gold_product.art_key."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('gold_product')
+              field: art_key
