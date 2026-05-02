@@ -1,6 +1,5 @@
 with source_data as (
-    select *
-    from {{ source('bronze', 'client__dict_loyalty_status') }}
+    select * from {{ source('bronze', 'client__dict_loyalty_status') }}
 )
 ,renamed as (
     select 
