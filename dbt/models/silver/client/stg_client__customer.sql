@@ -1,6 +1,5 @@
 with source_data as (
-    select *
-    from {{ source('bronze', 'client__customer') }}
+    select * from {{ source('bronze', 'client__customer') }}
 )
 ,renamed as (
     select 
@@ -14,7 +13,8 @@ with source_data as (
         civil_status_code,
         is_deleted = 1 as is_deleted,
         registration_date,
-        last_ingested_at as updated_at
+        last_ingested_at as updated_at,
+        correlation_id as correlation_id
     from source_data
 )
 select * from renamed

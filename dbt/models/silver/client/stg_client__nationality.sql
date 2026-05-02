@@ -3,6 +3,7 @@ with source_data as (
         *
     from {{ source('bronze', 'client__nationality') }}
 ),
+
 renamed as (
     select 
         person_id,
