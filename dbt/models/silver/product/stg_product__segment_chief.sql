@@ -6,8 +6,11 @@ with source as (
 ,renamed as (
     select
         segment_chief_id as id,
-        segment_id as segment_id,
-        chief_id as chief_id
+        segment_id,
+        chief_id,
+        is_current,
+        valid_from,
+        valid_to
     from source
     )
 select * from renamed

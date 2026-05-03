@@ -5,11 +5,12 @@ with source as (
 
 ,renamed as (
     select
-        contractor_id as id,
-        contractor_name as name,
-        contractor_phone_number as phone_number,
+        contractor_id            as id,
+        contractor_name          as name,
+        contractor_phone_number  as phone_number,
         contractor_email_address as email,
-        contractor_address as address
+        contractor_address       as address,
+        updated_at
     from source
     )
 select * from renamed
