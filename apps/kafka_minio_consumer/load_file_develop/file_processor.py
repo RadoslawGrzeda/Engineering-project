@@ -192,7 +192,6 @@ class DataLoader:
                     updated_at = CURRENT_TIMESTAMP;
 ''')
 
-        df['updated_at']=datetime.datetime.now()
         records=df.to_dict(orient='records')
         records = [{**record, "source_file": source_file} for record in records]
 
@@ -280,7 +279,6 @@ class DataLoader:
 
                     """)
         
-        df['updated_at']=datetime.datetime.now()
         records=valid.to_dict(orient='records')
         records = [{**record, "source_file": source_file} for record in records]
 
@@ -333,10 +331,10 @@ class DataLoader:
                 raise
 
 
-    def _load_segment(self, df:pd.DataFrame) -> None:
+    def _load_segment(self, df: pd.DataFrame) -> None:
         t = time.perf_counter()
-        source_file=self.path
-        
+        source_file = self.path
+
         if df.empty:
             logger.warning("Data frame is empty", extra={
                 'class': self.__class__.__name__,
@@ -350,54 +348,6 @@ class DataLoader:
         invalid = df[~df['sector_id'].isin(existing_sectors)].copy()
         valid = df[df['sector_id'].isin(existing_sectors)].copy()
 
-        sql=text(f"""
-                    INSERT INTO product.segment (segment_id, segment_code, segment_name, sector_id, source_file)
-                    VALUES (:segment_id, :segment_code, :segment_name, :sector_id, :source_file)
-                    ON CONFLICT (segment_id) DO UPDATE SET
-                        segment_code = EXCLUDED.segment_code,
-                        segment_name = EXCLUDED.segment_name,
-                        sector_id = EXCLUDED.sector_id,
-                        source_file = EXCLUDED.source_file,
-                        updated_at = CURRENT_TIMESTAMP;
-                    """)
-
-        update_sql=text(f'''
-                        UPDATE product.segment_chief
-                        SET is_current = False,
-                        valid_to=current_date
-                        where segment_id = :segment_id
-                        and chief_id != :chief_id
-                        and valid_to is null;
-
-                        ''')
-
-        insert_relation_sql = text(f'''
-                                INSERT INTO product.segment_chief (segment_id, chief_id, is_current, valid_from, valid_to, source_file)
-                                SELECT :segment_id, :chief_id, :is_current, :valid_from, :valid_to, :source_file
-                                WHERE NOT EXISTS (
-                                    SELECT 1 FROM product.segment_chief
-                                    WHERE segment_id = :segment_id
-                                    AND chief_id = :chief_id
-                                    AND is_current = True
-                                );
-                                ''')
-        updateRecords=valid.copy()
-        source_file=self.path
-        updateRecords['source_file']=source_file
-        updateRecords['valid_from']=datetime.date(2023,1,1)
-        updateRecords['valid_to']=None
-        updateRecords['is_current']=True
-        updateRecords['created_at']=datetime.datetime.now()
-        updateRecords['updated_at']=datetime.datetime.now()
-
-        updateRecords=updateRecords.to_dict('records')
-
-        valid['updated_at']=datetime.datetime.now()
-        records=valid.copy().to_dict(orient='records')
-
-        for record in records:
-            record['source_file']=source_file
-
         if not invalid.empty:
             logger.warning("Rows skipped due to missing sector_id", extra={
                 "class": self.__class__.__name__,
@@ -407,52 +357,89 @@ class DataLoader:
                 "invalid_sector_ids": invalid['sector_id'].unique().tolist(),
                 "source_file": source_file,
             })
-            dead_letter_rows = []
-            for idx, row in invalid.iterrows():
-                reasons = []
-                reasons.append(f"sector_id={row['sector_id']} not found in sector table")
-                dead_letter_rows.append((idx, row.to_dict(), "; ".join(reasons)))
-
+            dead_letter_rows = [
+                (idx, row.to_dict(), f"sector_id={row['sector_id']} not found in sector table")
+                for idx, row in invalid.iterrows()
+            ]
             if dead_letter_rows:
                 self.load_to_dead_letter(dead_letter_rows, "segment")
 
+        segment_sql = text("""
+            INSERT INTO product.segment (segment_id, segment_code, segment_name, sector_id, source_file)
+            VALUES (:segment_id, :segment_code, :segment_name, :sector_id, :source_file)
+            ON CONFLICT (segment_id) DO UPDATE SET
+                segment_code = EXCLUDED.segment_code,
+                segment_name = EXCLUDED.segment_name,
+                sector_id    = EXCLUDED.sector_id,
+                source_file  = EXCLUDED.source_file,
+                updated_at   = CURRENT_TIMESTAMP
+        """)
+
+        upsert_chief_sql = text("""
+            INSERT INTO product.segment_chief (segment_id, chief_id, valid_from, source_file)
+            VALUES (:segment_id, :chief_id, :valid_from, :source_file)
+            ON CONFLICT (segment_id) DO UPDATE SET
+                chief_id    = EXCLUDED.chief_id,
+                valid_from  = EXCLUDED.valid_from,
+                updated_at  = CURRENT_TIMESTAMP,
+                source_file = EXCLUDED.source_file
+        """)
+
+        existing_chiefs = self._get_existing_chief_ids()
+        chief_invalid = valid[~valid['chief_id'].isin(existing_chiefs)].copy()
+        if not chief_invalid.empty:
+            logger.warning("Rows skipped for segment_chief due to missing chief_id", extra={
+                "class": self.__class__.__name__,
+                "method": "_load_segment",
+                "table": "segment_chief",
+                "skipped_count": len(chief_invalid),
+                "invalid_chief_ids": chief_invalid['chief_id'].unique().tolist(),
+                "source_file": source_file,
+            })
+            self.load_to_dead_letter(
+                [(idx, row.to_dict(), f"chief_id={row['chief_id']} not found in chief table")
+                 for idx, row in chief_invalid.iterrows()],
+                "segment"
+            )
+
+        valid = valid.copy()
+        valid['source_file'] = source_file
+        valid['valid_from'] = datetime.date.today()
+
+        segment_records = valid[['segment_id', 'segment_code', 'segment_name', 'sector_id', 'source_file']].to_dict(orient='records')
+        chief_valid = valid[valid['chief_id'].isin(existing_chiefs)].copy()
+        chief_records = chief_valid[['segment_id', 'chief_id', 'valid_from', 'source_file']].to_dict(orient='records')
+
         with self.engine.begin() as conn:
             try:
-                logger.info("Updating segment_chief relations", extra={
-                    "class": self.__class__.__name__,
-                    "method": "_load_segment",
-                    "table": "segment_chief",
-                    "records_count": len(updateRecords),
-                })
-                conn.execute(update_sql, updateRecords)
-
-                logger.info("Inserting records", extra={
+                logger.info("Upserting segment records", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_segment",
                     "table": "segment",
-                    "records_count": len(records),
+                    "records_count": len(segment_records),
                     "source_file": source_file,
                 })
-                conn.execute(sql, records)
+                conn.execute(segment_sql, segment_records)
 
-                logger.info("Inserting segment_chief relations", extra={
-                    "class": self.__class__.__name__,
-                    "method": "_load_segment",
-                    "table": "segment_chief",
-                    "records_count": len(updateRecords),
-                })
-                conn.execute(insert_relation_sql, updateRecords)
+                if chief_records:
+                    logger.info("Upserting segment_chief records", extra={
+                        "class": self.__class__.__name__,
+                        "method": "_load_segment",
+                        "table": "segment_chief",
+                        "records_count": len(chief_records),
+                    })
+                    conn.execute(upsert_chief_sql, chief_records)
 
-                logger.info("Records inserted successfully", extra={
+                logger.info("Records upserted successfully", extra={
                     "class": self.__class__.__name__,
                     "method": "_load_segment",
                     "table": "segment",
-                    "records_count": len(records),
+                    "records_count": len(segment_records),
                     "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
-                return len(records)
+                return len(segment_records)
             except Exception as e:
-                logger.error("DB insert failed", extra={
+                logger.error("DB upsert failed", extra={
                     "class": self.__class__.__name__,
                     "method": "_load_segment",
                     "table": "segment",
@@ -481,6 +468,8 @@ class DataLoader:
                     INSERT INTO product.chief (chief_id, chief_first_name, chief_last_name, email_address, phone_number,source_file)
                     VALUES (:chief_id, :chief_first_name, :chief_last_name, :chief_email, :chief_phone, :source_file)
                     ON CONFLICT (chief_id) DO UPDATE SET
+                    chief_first_name = EXCLUDED.chief_first_name,
+                    chief_last_name = EXCLUDED.chief_last_name,
                     email_address = EXCLUDED.email_address,
                     phone_number = EXCLUDED.phone_number,
                     source_file = EXCLUDED.source_file
@@ -526,16 +515,7 @@ class DataLoader:
     
     def _load_contractor(self, df: pd.DataFrame) -> None:
         t = time.perf_counter()
-        source_file=self.path
-        sql = text(f'''
-        INSERT INTO product.contractor (contractor_id, contractor_name, contractor_phone_number, contractor_email_address, contractor_address, source_file, created_at,updated_at)
-        VALUES (:contractor_id, :contractor_name, :contractor_phone_number, :contractor_email_address, :contractor_address, :source_file, :created_at, :updated_at)
-        ON CONFLICT (contractor_id) DO UPDATE SET
-        contractor_name = EXCLUDED.contractor_name,
-        contractor_phone_number = EXCLUDED.contractor_phone_number,
-        contractor_email_address = EXCLUDED.contractor_email_address,
-        contractor_address = EXCLUDED.contractor_address
-        ''')
+        source_file = self.path
 
         if df.empty:
             logger.warning("Data frame is empty", extra={
@@ -546,92 +526,81 @@ class DataLoader:
             })
             raise ValueError("No contractor records to load: DataFrame is empty")
 
+        contractor_sql = text('''
+            INSERT INTO product.contractor
+                (contractor_id, contractor_name, contractor_phone_number,
+                 contractor_email_address, contractor_address, source_file, created_at, updated_at)
+            VALUES
+                (:contractor_id, :contractor_name, :contractor_phone_number,
+                 :contractor_email_address, :contractor_address, :source_file, :created_at, :updated_at)
+            ON CONFLICT (contractor_id) DO UPDATE SET
+                contractor_name          = EXCLUDED.contractor_name,
+                contractor_phone_number  = EXCLUDED.contractor_phone_number,
+                contractor_email_address = EXCLUDED.contractor_email_address,
+                contractor_address       = EXCLUDED.contractor_address,
+                source_file              = EXCLUDED.source_file,
+                updated_at               = EXCLUDED.updated_at
+        ''')
+
+        contract_sql = text('''
+            INSERT INTO product.contract
+                (contractor_id, contract_number, signed_date, status, source_file, updated_at)
+            VALUES
+                (:contractor_id, :contract_number, :signed_date, :status, :source_file, :updated_at)
+            ON CONFLICT (contractor_id, contract_number) DO UPDATE SET
+                signed_date = EXCLUDED.signed_date,
+                status      = EXCLUDED.status,
+                source_file = EXCLUDED.source_file,
+                updated_at  = EXCLUDED.updated_at
+        ''')
+
+        contractor_records = df[['contractor_id', 'contractor_name', 'contractor_phone_number',
+                                  'contractor_email_address', 'contractor_address']].copy().to_dict(orient='records')
+        for record in contractor_records:
+            record['created_at'] = datetime.datetime.now()
+            record['updated_at'] = datetime.datetime.now()
+            record['source_file'] = source_file
+
+        contract_records = None
         if 'contract_number' in df.columns:
-            update_contract_sql = text(f'''
-            UPDATE product.contract
-            SET is_current = False,
-            valid_to = current_date
-            where
-            contractor_id = :contractor_id
-            and contract_number != :contract_number
-            and is_current = True
-            and valid_to is null;
-            ''')
-            insert_contract_sql = text(f'''
-            INSERT INTO product.contract (contractor_id,contract_number, signed_date,status,is_current,valid_from,valid_to,source_file)
-            VALUES (:contractor_id, :contract_number, :signed_date, :status, :is_current, :valid_from, :valid_to, :source_file)
-            ON CONFLICT (contractor_id,contract_number) DO UPDATE SET
-            signed_date = EXCLUDED.signed_date,
-            status = EXCLUDED.status,
-            valid_from = EXCLUDED.valid_from,
-            updated_at = EXCLUDED.updated_at;
-            ''')
-
-        contractor_df=df[['contractor_id', 'contractor_name', 'contractor_phone_number', 'contractor_email_address', 'contractor_address']]
-        
-        contractor_df=contractor_df.to_dict(orient='records')
-        for record in contractor_df:    
-            record['created_at']=datetime.datetime.now()
-            record['updated_at']=datetime.datetime.now()
-            record['source_file']=source_file    
-
-        if 'contract_number' in df.columns:
-            update_contract_df=df[['contractor_id', 'contract_number']]
-            update_contract_df['source_file']=source_file
-
-            insert_df=update_contract_df.copy()
-            insert_df['signed_date']=datetime.date(2025,1,1)
-            insert_df['status']='active'
-            insert_df['is_current']=True
-            insert_df['valid_from']=datetime.datetime.now()
-            insert_df['valid_to']=None
-            insert_df['source_file']=source_file
-            insert_df['updated_at']=datetime.datetime.now()
-            insert_df['created_at']=datetime.date.today()
-
-            insert_df=insert_df.to_dict(orient='records')
-            update_contract_df=update_contract_df.to_dict(orient='records')
-
+            contract_df = df[['contractor_id', 'contract_number']].copy()
+            contract_df['signed_date'] = datetime.date(2025, 1, 1)
+            contract_df['status'] = 'active'
+            contract_df['source_file'] = source_file
+            contract_df['updated_at'] = datetime.datetime.now()
+            contract_records = contract_df.to_dict(orient='records')
 
         with self.engine.begin() as conn:
             try:
-                logger.info("Inserting records", extra={
+                logger.info("Upserting contractor records", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_contractor",
                     "table": "contractor",
-                    "records_count": len(contractor_df),
+                    "records_count": len(contractor_records),
                     "source_file": source_file,
                 })
-                conn.execute(sql, contractor_df)
+                conn.execute(contractor_sql, contractor_records)
 
-                if 'contract_number' in df.columns:
-                    logger.info("Updating  relations", extra={
+                if contract_records:
+                    logger.info("Upserting contract records", extra={
                         'class': self.__class__.__name__,
                         'method': "_load_contractor",
                         "table": "contract",
-                        "records_count": len(update_contract_df),
+                        "records_count": len(contract_records),
                         "source_file": source_file,
                     })
-                    conn.execute(update_contract_sql, update_contract_df)
+                    conn.execute(contract_sql, contract_records)
 
-                    logger.info("Inserting records", extra={
-                        'class': self.__class__.__name__,
-                        'method': "_load_contractor",
-                        "table": "contract",
-                        "records_count": len(insert_df),
-                        "source_file": source_file,
-                    })
-                    conn.execute(insert_contract_sql, insert_df)
-                logger.info("Records inserted successfully", extra={
+                logger.info("Records upserted successfully", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_contractor",
                     "table": "contractor",
-                    "records_count": len(contractor_df),
+                    "records_count": len(contractor_records),
                     "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
-                return len(contractor_df)
+                return len(contractor_records)
             except Exception as e:
-                logger.error("DB insert failed", extra={
+                logger.error("DB upsert failed", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_contractor",
                     "table": "contractor",
@@ -642,6 +611,20 @@ class DataLoader:
                 }, exc_info=True)
                 raise
 
+    def _get_existing_chief_ids(self) -> set[str]:
+        try:
+            with self.engine.begin() as conn:
+                rows = conn.execute(text("SELECT chief_id FROM product.chief"))
+                return set(row[0] for row in rows)
+        except Exception as e:
+            logger.error("Error fetching existing chief_ids", extra={
+                "class": self.__class__.__name__,
+                "method": "_get_existing_chief_ids",
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }, exc_info=True)
+            raise
+
     def _get_existing_art_keys(self) -> set[int]:
         try:
             with self.engine.begin() as conn:
@@ -651,30 +634,6 @@ class DataLoader:
             logger.error("Error fetching existing art_keys", extra={
                 "class": self.__class__.__name__,
                 "method": "_get_existing_art_keys",
-                "error_type": type(e).__name__,
-                "error": str(e),
-            }, exc_info=True)
-            raise
-
-    def _get_current_pos_information(self, art_keys: set) -> pd.DataFrame:
-        """Bieżące wiersze pos_information (date_end IS NULL) dla podanych art_key."""
-        try:
-            if not art_keys:
-                return pd.DataFrame(columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"])
-            with self.engine.begin() as conn:
-                q = text(
-                    "SELECT art_key, ean, price_net, price_gross, vat_rate "
-                    "FROM product.pos_information WHERE date_end IS NULL AND art_key = ANY(:keys)"
-                )
-                rows = conn.execute(q, {"keys": list(art_keys)})
-                return pd.DataFrame(
-                    rows.fetchall(),
-                    columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"],
-                )
-        except Exception as e:
-            logger.error("Error fetching current pos information", extra={
-                'class': self.__class__.__name__,
-                'method': "_get_current_pos_information",
                 "error_type": type(e).__name__,
                 "error": str(e),
             }, exc_info=True)
@@ -723,9 +682,9 @@ class DataLoader:
             raise
 
     def _load_pos_information(self, df: pd.DataFrame) -> None:
-        """Wstawia tylko wiersze nowe lub ze zmienioną ceną. Ten sam (art_key, ean) i ta sama cena = pomijamy."""
         t = time.perf_counter()
-        source_file=self.path
+        source_file = self.path
+
         if df.empty:
             logger.warning("Data frame is empty", extra={
                 'class': self.__class__.__name__,
@@ -735,21 +694,17 @@ class DataLoader:
             })
             raise ValueError("No pos_information records to load: DataFrame is empty")
 
-        update_sql = text('''
-            UPDATE product.pos_information
-            SET valid_to = :valid_to,
-                is_current = :is_current,
-                updated_at = :updated_at,
-                source_file = :source_file
-            WHERE art_key = :art_key AND ean = :ean AND valid_to IS NULL
-        ''')
-
-        insert_sql = text('''
-            INSERT INTO product.pos_information (art_key, ean, vat_rate, price_net, price_gross,
-                                        valid_from, created_at, updated_at, source_file, is_current)
-            VALUES (:art_key, :ean, :vat_rate, :price_net, :price_gross, :valid_from, :created_at,
-                    :updated_at, :source_file, :is_current)
-
+        sql = text('''
+            INSERT INTO product.pos_information
+                (art_key, ean, vat_rate, price_net, price_gross, valid_from, source_file, created_at, updated_at)
+            VALUES
+                (:art_key, :ean, :vat_rate, :price_net, :price_gross, :valid_from, :source_file, :created_at, :updated_at)
+            ON CONFLICT (art_key, ean) DO UPDATE SET
+                vat_rate    = EXCLUDED.vat_rate,
+                price_net   = EXCLUDED.price_net,
+                price_gross = EXCLUDED.price_gross,
+                source_file = EXCLUDED.source_file,
+                updated_at  = EXCLUDED.updated_at
         ''')
 
         existing_art_keys = self._get_existing_art_keys()
@@ -762,12 +717,12 @@ class DataLoader:
                 'method': "_load_pos_information",
                 "table": "pos_information",
                 "skipped_count": len(invalid),
-                "source_file": self.path,
+                "source_file": source_file,
             })
-            dead_letter_rows = []
-            for idx, row in invalid.iterrows():
-                dead_letter_rows.append((idx, row.to_dict(), f"art_key={row['art_key']} not found in product table"))
-
+            dead_letter_rows = [
+                (idx, row.to_dict(), f"art_key={row['art_key']} not found in product table")
+                for idx, row in invalid.iterrows()
+            ]
             if dead_letter_rows:
                 self.load_to_dead_letter(dead_letter_rows, "pos_information")
 
@@ -775,87 +730,35 @@ class DataLoader:
             logger.info("pos_information: no valid art_keys found.")
             return 0
 
-        lock_sql = text(
-            "SELECT art_key, ean, price_net, price_gross, vat_rate "
-            "FROM product.pos_information WHERE valid_to IS NULL AND art_key = ANY(:keys) "
-            "FOR UPDATE"
-        )
+        valid = valid.copy()
+        valid['valid_from'] = datetime.date.today()
+        valid['source_file'] = source_file
+        valid['created_at'] = datetime.datetime.now()
+        valid['updated_at'] = datetime.datetime.now()
+        records = valid[['art_key', 'ean', 'vat_rate', 'price_net', 'price_gross',
+                         'valid_from', 'source_file', 'created_at', 'updated_at']].to_dict(orient='records')
 
         with self.engine.begin() as conn:
             try:
-                art_key_list = valid["art_key"].unique().tolist()
-                rows = conn.execute(lock_sql, {"keys": art_key_list}).fetchall()
-                current = pd.DataFrame(
-                    rows, columns=["art_key", "ean", "price_net", "price_gross", "vat_rate"]
-                )
-                current = current.rename(columns={
-                    "price_net": "price_net_db",
-                    "price_gross": "price_gross_db",
-                    "vat_rate": "vat_rate_db",
-                })
-                merged = valid.merge(current, on=["art_key", "ean"], how="left")
-
-                price_unchanged = (
-                    merged["price_net_db"].notna()
-                    & (merged["price_net"] == merged["price_net_db"])
-                    & (merged["price_gross"] == merged["price_gross_db"])
-                    & (merged["vat_rate"] == merged["vat_rate_db"])
-                )
-                to_insert = (
-                    merged[~price_unchanged]
-                    .drop(columns=["price_net_db", "price_gross_db", "vat_rate_db"], errors="ignore")
-                    .drop_duplicates(subset=["art_key", "ean"])
-                )
-
-                if to_insert.empty:
-                    logger.info("pos_information: no new or changed rows to load.")
-                    return 0
-
-                to_insert = to_insert.copy()
-                to_insert["valid_from"] = datetime.date(2023, 1, 1)
-                to_insert["source_file"] = source_file
-                to_insert["updated_at"] = datetime.datetime.now()
-                to_insert["valid_to"] = None
-                to_insert["is_current"] = True
-                to_insert['created_at'] = datetime.datetime.now()
-                valid_df = to_insert.to_dict(orient="records")
-
-                update_df = to_insert[["art_key", "ean"]].drop_duplicates()
-                update_df["source_file"] = source_file
-                update_df["valid_to"] = datetime.date.today()
-                update_df["is_current"] = False
-                update_df["updated_at"] = datetime.datetime.now()
-                update_rows = update_df.to_dict(orient="records")
-
-                if update_rows:
-                    logger.info("Closing outdated pos_information records", extra={
-                        'class': self.__class__.__name__,
-                        'method': "_load_pos_information",
-                        "table": "pos_information",
-                        "records_count": len(update_rows),
-                        "source_file": source_file,
-                    })
-                    conn.execute(update_sql, update_rows)
-
-                logger.info("Inserting new pos_information records", extra={
+                logger.info("Upserting pos_information records", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_pos_information",
                     "table": "pos_information",
-                    "records_count": len(valid_df),
+                    "records_count": len(records),
                     "source_file": source_file,
                 })
-                conn.execute(insert_sql, valid_df)
-                logger.info("Records inserted successfully", extra={
+                conn.execute(sql, records)
+                logger.info("Records upserted successfully", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_pos_information",
                     "table": "pos_information",
-                    "records_count": len(valid_df),
+                    "records_count": len(records),
                     "source_file": source_file,
                     "duration_ms": round((time.perf_counter() - t) * 1000, 2),
                 })
-                return len(valid_df)
+                return len(records)
             except Exception as e:
-                logger.error("Error with pos_information loading", extra={
+                logger.error("DB upsert failed", extra={
                     'class': self.__class__.__name__,
                     'method': "_load_pos_information",
                     "table": "pos_information",
@@ -957,8 +860,7 @@ class DataLoader:
                 "brand",
                 "article_codification_date",
             ]
-        ].copy()
-        valid["department_id"] = valid["departament_id"]
+        ].rename(columns={"departament_id": "department_id"}).copy()
         valid["source_file"] = self.path
         valid["updated_at"] = datetime.datetime.now()
         valid["created_at"] = datetime.datetime.now()
@@ -1132,7 +1034,8 @@ class DataLoader:
                 "method": "_get_existing_site_codes_from_info",
                 "error_type": type(e).__name__,
                 "error": str(e),
-            },exc_info=True)
+            }, exc_info=True)
+            raise
 
     def _load_site_info(self, df: pd.DataFrame) -> int:
         t = time.perf_counter()

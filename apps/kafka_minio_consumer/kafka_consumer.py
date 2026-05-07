@@ -17,6 +17,12 @@ import uuid
 
 MAX_RETRIES = 3
 
+_BRONZE_DAG_IDS = {
+    'product': 'bronze_product_ingest',
+    'store': 'bronze_store_ingest',
+}
+
+
 class KafkaMinioConsumer:
     def __init__(self):
         load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
@@ -25,13 +31,12 @@ class KafkaMinioConsumer:
         self.group_id = os.getenv('KAFKA_GROUP_ID')
         self.topic=os.getenv('KAFKA_TOPIC')
         self.db_engine = create_engine(os.getenv('postgress_connection'))
-        # self.db_engine = create_engine(os.getenv('POSTGRES_CONNECTION'))
-        # self.airflow_api_url = os.getenv('AIRFLOW_API_URL')
-        # self.API_USER = os.getenv('API_USER')
-        # self.API_PASSWORD = os.getenv('API_PASSWORD')
+        self.airflow_api_url = os.getenv('AIRFLOW_API_URL', 'http://airflow-webserver:8080/api/v1')
+        self.airflow_user = os.getenv('AIRFLOW_USER')
+        self.airflow_password = os.getenv('AIRFLOW_PASSWORD')
         try:
             self.consumer = KafkaConsumer(
-                                    bootstrap_servers=[self.bootstrap_servers],
+                                    bootstrap_servers=self.bootstrap_servers.split(','),
                                     group_id=self.group_id,
                                     auto_offset_reset='latest',
                                     enable_auto_commit=False,
@@ -63,21 +68,7 @@ class KafkaMinioConsumer:
                 'minio_address': os.getenv('MINIO_ADDRESS')})
             raise
         self.logger.info("Minio client created successfully", extra={'class': 'KafkaMinioConsumer', 'method': "__init__", 'minio_address': os.getenv('MINIO_ADDRESS')})
-    # def _send_post_request(self, bucket_name, file_key, schema):
-    #     try:
-    #         response = requests.post(
-    #             self.airflow_api_url,
-    #             json={
-    #                 'conf': {
-    #                     'bucket_name': bucket_name,
-    #                     'file_key': file_key,
-    #                     'file_schema' : schema}},
-    #             auth=(self.API_USER, self.API_PASSWORD)
-    #         )
-    #         response.raise_for_status()
-    #         self.logger.info("POST request sent successfully to API for file '%s' in bucket '%s'", file_key.split('/')[-1], bucket_name, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
-    #     except requests.exceptions.RequestException as e:
-    #         self.logger.error("Error sending POST request to API: %s", e, extra={'file_key': file_key, 'bucket_name': bucket_name, 'schema': schema})
+   
     def  _load_file_from_minio(self, bucket_name:str, file_key:str) -> pd.DataFrame:
         '''
         This method is responsible for load file from minio and return it for next processing steps
@@ -198,12 +189,13 @@ class KafkaMinioConsumer:
             # self.logger.info("Schema validation passed", extra={'schema': schema, 'file_key': file_key})
             try:
                 len_of_load=process_data.load_to_db(data, schema)
-                if len_of_load == 0 and errors:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=str(errors), rejected_rows=len(errors), engine=self.db_engine, correlation_id=cid)
-                elif len_of_load == 0 and not errors:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', engine=self.db_engine, correlation_id=cid)
-                elif len_of_load > 0 and errors:
-                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=str(errors), rejected_rows=len(errors), engine=self.db_engine, correlation_id=cid)
+                db_skipped = len(data) - len_of_load
+                total_rejected = len(errors) + db_skipped
+                all_errors = str(errors) if errors else None
+                if total_rejected > 0 and len_of_load > 0:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='partial_success', inserted_rows=len_of_load, error_message=all_errors, rejected_rows=total_rejected, engine=self.db_engine, correlation_id=cid)
+                elif total_rejected > 0 and len_of_load == 0:
+                    self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='error', error_message=all_errors, rejected_rows=total_rejected, engine=self.db_engine, correlation_id=cid)
                 else:
                     self._change_file_status_in_db(destination_table=schema,file_name=file_key.split('/')[-1], status='success', inserted_rows=len_of_load, engine=self.db_engine, correlation_id=cid)
             except Exception as e:
@@ -215,6 +207,30 @@ class KafkaMinioConsumer:
             raise
 
             
+    def _trigger_bronze_dag(self, db_schema: str, cid: str) -> None:
+        dag_id = _BRONZE_DAG_IDS[db_schema]
+        try:
+            response = requests.post(
+                f"{self.airflow_api_url}/dags/{dag_id}/dagRuns",
+                json={"conf": {"correlation_id": cid}},
+                auth=(self.airflow_user, self.airflow_password),
+                timeout=5,
+            )
+            response.raise_for_status()
+            self.logger.info("Triggered bronze DAG '%s'", dag_id, extra={
+                'class': 'KafkaMinioConsumer',
+                'method': '_trigger_bronze_dag',
+                'dag_id': dag_id,
+                'schema': db_schema,
+            })
+        except requests.exceptions.RequestException as e:
+            self.logger.warning("Failed to trigger bronze DAG '%s': %s", dag_id, e, extra={
+                'class': 'KafkaMinioConsumer',
+                'method': '_trigger_bronze_dag',
+                'dag_id': dag_id,
+                'schema': db_schema,
+            })
+
     def _message_key(self, tp, msg):
         """Unique key for a Kafka message: (topic, partition, offset)."""
         return (tp.topic, tp.partition, msg.offset)
@@ -257,6 +273,9 @@ class KafkaMinioConsumer:
                         self.consumer.commit({tp: OffsetAndMetadata(msg.offset + 1, None, -1)})
 
                         retry_counts.pop(msg_key, None)
+                        db_schema = self._resolve_schema(schema)
+                        if db_schema in _BRONZE_DAG_IDS:
+                            self._trigger_bronze_dag(db_schema, cid)
                         self._archive_file_in_minio('archive',bucket_name, file_key)
 
                         self.logger.info("Total processing completed for file '%s'", file_name,
