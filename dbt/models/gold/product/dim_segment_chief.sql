@@ -10,10 +10,8 @@ with segment_chief as (
         id              as segment_chief_id,
         segment_id,
         chief_id,
-        valid_from      as src_valid_from,
-        valid_to        as src_valid_to
+        valid_from      as src_valid_from
     from {{ ref('stg_product__segment_chief') }}
-    where is_current = 1
 ),
 segment as (
     select id, code as segment_code
@@ -26,21 +24,19 @@ source as (
         sc.segment_id,
         s.segment_code,
         sc.src_valid_from,
-        sc.src_valid_to,
         MD5(concat(
-            coalesce(toString(sc.chief_id),     ''), '|',
-            coalesce(toString(sc.segment_id),   ''), '|',
-            coalesce(toString(s.segment_code),  ''), '|',
-            coalesce(toString(sc.src_valid_from),''), '|',
-            coalesce(toString(sc.src_valid_to), '')
+            coalesce(toString(sc.chief_id),      ''), '|',
+            coalesce(toString(sc.segment_id),    ''), '|',
+            coalesce(toString(s.segment_code),   ''), '|',
+            coalesce(toString(sc.src_valid_from), '')
         )) as _row_hash
     from segment_chief sc
     left join segment s on sc.segment_id = s.id
-),
+)
 
 {% if is_incremental() %}
 
-current_in_target as (
+, current_in_target as (
     select
         segment_chief_id,
         argMax(_row_hash,       dbt_valid_from) as _row_hash,
@@ -48,10 +44,9 @@ current_in_target as (
         argMax(segment_id,      dbt_valid_from) as segment_id,
         argMax(segment_code,    dbt_valid_from) as segment_code,
         argMax(src_valid_from,  dbt_valid_from) as src_valid_from,
-        argMax(src_valid_to,    dbt_valid_from) as src_valid_to,
-        max(dbt_valid_from)                     as dbt_valid_from
+        max(dbt_valid_from)                     as current_dbt_valid_from
     from {{ this }}
-    where dbt_valid_to = toDateTime('9999-12-31 00:00:00')
+    where dbt_valid_to = toDateTime('2106-02-07 06:28:15')
     group by segment_chief_id
 ),
 
@@ -76,10 +71,9 @@ closed_records as (
         t.segment_id,
         t.segment_code,
         t.src_valid_from,
-        t.src_valid_to,
         t._row_hash,
         0               as is_current,
-        t.dbt_valid_from,
+        t.current_dbt_valid_from as dbt_valid_from,
         now()           as dbt_valid_to,
         now()           as dbt_updated_at
     from current_in_target t
@@ -93,11 +87,10 @@ new_records as (
         s.segment_id,
         s.segment_code,
         s.src_valid_from,
-        s.src_valid_to,
         s._row_hash,
         1                                   as is_current,
         now()                               as dbt_valid_from,
-        toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+        toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
         now()                               as dbt_updated_at
     from source s
     where s.segment_chief_id in (select segment_chief_id from changed)
@@ -116,11 +109,10 @@ select
     segment_id,
     segment_code,
     src_valid_from,
-    src_valid_to,
     _row_hash,
     1                                   as is_current,
     now()                               as dbt_valid_from,
-    toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+    toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
     now()                               as dbt_updated_at
 from source
 

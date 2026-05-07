@@ -1,8 +1,7 @@
 with source as (
     select * from
-    {{source('bronze', 'product__product')}}
+    {{source('bronze', 'product__product')}} FINAL
 )
-
 ,renamed as (
     select
         art_key                   as id,

@@ -1,6 +1,6 @@
 with source as (
     select * from
-    {{source('bronze', 'product__segment')}}
+    {{source('bronze', 'product__segment')}} FINAL
 )
 
 ,renamed as (

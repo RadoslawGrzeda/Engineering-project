@@ -29,11 +29,11 @@ source as (
             coalesce(toString(email),        '')
         )) as _row_hash
     from chief
-),
+)
 
 {% if is_incremental() %}
 
-current_in_target as (
+, current_in_target as (
     select
         chief_id,
         argMax(_row_hash,       dbt_valid_from) as _row_hash,
@@ -41,9 +41,9 @@ current_in_target as (
         argMax(last_name,       dbt_valid_from) as last_name,
         argMax(phone_number,    dbt_valid_from) as phone_number,
         argMax(email,           dbt_valid_from) as email,
-        max(dbt_valid_from)                     as dbt_valid_from
+        max(dbt_valid_from)                     as current_dbt_valid_from
     from {{ this }}
-    where dbt_valid_to = toDateTime('9999-12-31 00:00:00')
+    where dbt_valid_to = toDateTime('2106-02-07 06:28:15')
     group by chief_id
 ),
 
@@ -70,7 +70,7 @@ closed_records as (
         t.email,
         t._row_hash,
         0               as is_current,
-        t.dbt_valid_from,
+        t.current_dbt_valid_from as dbt_valid_from,
         now()           as dbt_valid_to,
         now()           as dbt_updated_at
     from current_in_target t
@@ -87,7 +87,7 @@ new_records as (
         s._row_hash,
         1                                   as is_current,
         now()                               as dbt_valid_from,
-        toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+        toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
         now()                               as dbt_updated_at
     from source s
     where s.chief_id in (select chief_id from changed)
@@ -109,7 +109,7 @@ select
     _row_hash,
     1                                   as is_current,
     now()                               as dbt_valid_from,
-    toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+    toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
     now()                               as dbt_updated_at
 from source
 

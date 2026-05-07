@@ -1,6 +1,6 @@
 with source as (
     select * from
-    {{source('bronze', 'product__segment_chief')}}
+    {{source('bronze', 'product__segment_chief')}} FINAL
 )
 
 ,renamed as (
@@ -8,9 +8,7 @@ with source as (
         segment_chief_id as id,
         segment_id,
         chief_id,
-        is_current,
-        valid_from,
-        valid_to
+        valid_from
     from source
     )
 select * from renamed

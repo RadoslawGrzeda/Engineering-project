@@ -1,52 +1,34 @@
 version: 2
 
 models:
-  - name: gold_chief
-    description: "Wymiar kierownikow segmentow."
+  - name: dim_product
+    description: "SCD2 — historia zmian produktów wraz z hierarchią (dział, sektor, segment, kontrahent)."
     columns:
-      - name: chief_id
-        description: "Identyfikator kierownika z systemu zrodlowego."
+      - name: art_key
+        description: "Klucz artykułu."
         tests:
           - not_null
-          - unique
 
-  - name: gold_segment_chief
-    description: "Wymiar przypisania kierownikow do segmentow z denormalizacja kodu segmentu."
+  - name: dim_chief
+    description: "SCD2 — historia zmian danych kierowników."
+    columns:
+      - name: chief_id
+        description: "Identyfikator kierownika."
+        tests:
+          - not_null
+
+  - name: dim_segment_chief
+    description: "SCD2 — historia przypisań kierowników do segmentów."
     columns:
       - name: segment_chief_id
-        tests:
-          - not_null
-          - unique
-      - name: chief_id
-        tests:
-          - not_null
-          - relationships:
-              to: ref('gold_chief')
-              field: chief_id
-
-  - name: gold_product
-    description: "Wymiar produktow z pelna denormalizacja hierarchii (department, sector, segment, contractor) - star schema."
-    columns:
-      - name: product_key
-        description: "Surrogate key wyliczany jako cityHash64(art_key)."
-        tests:
-          - not_null
-          - unique
-      - name: art_key
-        description: "Naturalny klucz produktu z systemu zrodlowego."
+        description: "Identyfikator przypisania."
         tests:
           - not_null
 
-  - name: gold_pos__information
-    description: "Wymiar informacji o cenach POS - SCD2 (jeden produkt ma N rekordow cenowych w czasie)."
+  - name: dim_pos_information
+    description: "SCD2 — historia zmian informacji cenowych produktów w POS (tylko aktywne rekordy ze źródła)."
     columns:
       - name: pos_information_id
+        description: "Identyfikator rekordu POS."
         tests:
           - not_null
-      - name: art_key
-        description: "FK do gold_product.art_key."
-        tests:
-          - not_null
-          - relationships:
-              to: ref('gold_product')
-              field: art_key

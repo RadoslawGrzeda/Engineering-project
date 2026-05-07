@@ -7,7 +7,7 @@
 
 with product as (
     select
-        id as art_key,
+        assumeNotNull(id) as art_key,
         argMax(art_number,                  updated_at) as art_number,
         argMax(segment_id,                  updated_at) as segment_id,
         argMax(department_id,               updated_at) as department_id,
@@ -61,11 +61,11 @@ source as (
     left join segment seg    on p.segment_id = seg.id
     left join sector s       on seg.sector_id = s.id
     left join contractor c   on p.contractor_id = c.id
-),
+)
 
 {% if is_incremental() %}
 
-current_in_target as (
+, current_in_target as (
     select
         art_key,
         argMax(_row_hash,                   dbt_valid_from) as _row_hash,
@@ -78,9 +78,9 @@ current_in_target as (
         argMax(segment_code,                dbt_valid_from) as segment_code,
         argMax(segment_name,                dbt_valid_from) as segment_name,
         argMax(contractor_name,             dbt_valid_from) as contractor_name,
-        max(dbt_valid_from)                                 as dbt_valid_from
-    from {{ this }}
-    where dbt_valid_to = toDateTime('9999-12-31 00:00:00')
+        max(dbt_valid_from)                                 as current_dbt_valid_from
+    from {{ this }} 
+    where dbt_valid_to = toDateTime('2106-02-07 06:28:15')
     group by art_key
 ),
 
@@ -112,7 +112,7 @@ closed_records as (
         t.contractor_name,
         t._row_hash,
         0               as is_current,
-        t.dbt_valid_from,
+        t.current_dbt_valid_from as dbt_valid_from,
         now()           as dbt_valid_to,
         now()           as dbt_updated_at
     from current_in_target t
@@ -134,7 +134,7 @@ new_records as (
         s._row_hash,
         1                                   as is_current,
         now()                               as dbt_valid_from,
-        toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+        toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
         now()                               as dbt_updated_at
     from source s
     where s.art_key in (select art_key from changed)
@@ -161,7 +161,7 @@ select
     _row_hash,
     1                                   as is_current,
     now()                               as dbt_valid_from,
-    toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+    toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
     now()                               as dbt_updated_at
 from source
 

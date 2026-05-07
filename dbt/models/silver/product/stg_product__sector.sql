@@ -1,8 +1,7 @@
 with source as (
     select * from
-    {{source('bronze', 'product__sector')}}
+    {{source('bronze', 'product__sector')}} FINAL
 )
-
 ,renamed as (
     select
         sector_id as id,
