@@ -1,12 +1,22 @@
 defaults:
-  order_by: tuple()
-  engine: MergeTree
+  engine: ReplacingMergeTree(updated_at)
 
 tables:
   - source: product.chief
+    order_by: chief_id
   - source: product.contract
+    order_by: contract_id
   - source: product.contractor
+    order_by: contractor_id
   - source: product.department
+    order_by: department_id
   - source: product.pos_information
+    order_by: pos_information_id
   - source: product.product
+    order_by: product_id
   - source: product.sector
+    order_by: sector_id
+  - source: product.segment
+    order_by: segment_id
+  - source: product.segment_chief
+    order_by: segment_chief_id
