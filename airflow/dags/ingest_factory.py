@@ -122,7 +122,7 @@ class IngestFactory:
         else:
             select_cols = f"* {_replace}"
         extra_where = f"AND {t['where']}" if t['where'] else ''
-        now = datetime.now(_WARSAW).strftime('%Y-%m-%d %H:%M:%S')
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         ddl = f"""
             INSERT INTO {self.BRONZE_DB}.{t['target']}
             SELECT
