@@ -13,7 +13,7 @@ with source as (
         country_code as country_code,
         site_geo_coordinate_x_value as latitude,
         site_geo_coordinate_y_value as longitude,
-        is_current as is_current
+        updated_at as updated_at
     from source
     )
 select * from renamed

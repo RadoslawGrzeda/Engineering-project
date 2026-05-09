@@ -15,7 +15,7 @@ with site_main as (
 ),
 site_info as (
     select
-        site_unique_code,
+        site_unique_code as _join_key,
         argMax(status_code,   updated_at) as status_code,
         argMax(opening_date,  updated_at) as opening_date,
         argMax(closing_date,  updated_at) as closing_date
@@ -24,14 +24,14 @@ site_info as (
 ),
 site_format as (
     select
-        site_unique_code,
+        site_unique_code as _join_key,
         argMax(format_code, updated_at) as format_code
     from {{ ref('stg_store__site_format') }}
     group by site_unique_code
 ),
 site_address as (
     select
-        site_unique_code,
+        site_unique_code as _join_key,
         argMax(zip_code,      updated_at) as zip_code,
         argMax(city,          updated_at) as city,
         argMax(street,        updated_at) as street,
@@ -44,21 +44,18 @@ site_address as (
 ),
 site_contact as (
     select
-        site_unique_code,
-        groupArray(type)                                    as contact_type,
-        groupArray(value)                                   as contact_value,
-        groupArray(role)                                    as contact_role,
-        groupArray(is_primary)                              as contact_is_primary,
-        groupArray(valid_from)                              as contact_valid_from,
-        groupArray(ifNull(valid_to, toDate('9999-12-31')))  as contact_valid_to
+        site_unique_code as _join_key,
+        groupArray(type)  as contact_type,
+        groupArray(value) as contact_value,
+        groupArray(role)  as contact_role
     from {{ ref('stg_store__site_contact') }}
     group by site_unique_code
 ),
 source as (
     select
-        site.site_unique_code,
-        site.site_code,
-        site.site_name,
+        sm.site_unique_code,
+        sm.site_code,
+        sm.site_name,
         info.status_code,
         info.opening_date,
         info.closing_date,
@@ -73,12 +70,9 @@ source as (
         contact.contact_type,
         contact.contact_value,
         contact.contact_role,
-        contact.contact_is_primary,
-        contact.contact_valid_from,
-        contact.contact_valid_to,
         MD5(concat(
-            coalesce(toString(site.site_code),    ''), '|',
-            coalesce(toString(site.site_name),    ''), '|',
+            coalesce(toString(sm.site_code),    ''), '|',
+            coalesce(toString(sm.site_name),    ''), '|',
             coalesce(toString(info.status_code),  ''), '|',
             coalesce(toString(info.opening_date), ''), '|',
             coalesce(toString(info.closing_date), ''), '|',
@@ -92,21 +86,18 @@ source as (
             coalesce(toString(address.longitude), ''), '|',
             coalesce(toString(contact.contact_type), ''), '|',
             coalesce(toString(contact.contact_value), ''), '|',
-            coalesce(toString(contact.contact_role), ''), '|',
-            coalesce(toString(contact.contact_is_primary), ''), '|',
-            coalesce(toString(contact.contact_valid_from), ''), '|',
-            coalesce(toString(contact.contact_valid_to), '')
+            coalesce(toString(contact.contact_role), '')
         )) as _row_hash
-    from site_main site
-    left join site_info info        on site.site_unique_code = info.site_unique_code
-    left join site_format fmt       on site.site_unique_code = fmt.site_unique_code
-    left join site_address address  on site.site_unique_code = address.site_unique_code
-    left join site_contact contact  on site.site_unique_code = contact.site_unique_code
-),
+    from site_main sm
+    left join site_info info        on sm.site_unique_code = info._join_key
+    left join site_format fmt       on sm.site_unique_code = fmt._join_key
+    left join site_address address  on sm.site_unique_code = address._join_key
+    left join site_contact contact  on sm.site_unique_code = contact._join_key
+)
 
 {% if is_incremental() %}
 
-current_in_target as (
+, current_in_target as (
     select
         site_unique_code,
         argMax(_row_hash,            dbt_valid_from) as _row_hash,
@@ -123,15 +114,12 @@ current_in_target as (
         argMax(country_code,         dbt_valid_from) as country_code,
         argMax(latitude,             dbt_valid_from) as latitude,
         argMax(longitude,            dbt_valid_from) as longitude,
-        argMax(contact_type,         dbt_valid_from) as contact_type,
-        argMax(contact_value,        dbt_valid_from) as contact_value,
-        argMax(contact_role,         dbt_valid_from) as contact_role,
-        argMax(contact_is_primary,   dbt_valid_from) as contact_is_primary,
-        argMax(contact_valid_from,   dbt_valid_from) as contact_valid_from,
-        argMax(contact_valid_to,     dbt_valid_from) as contact_valid_to,
-        max(dbt_valid_from)                          as dbt_valid_from
+        argMax(contact_type,  dbt_valid_from) as contact_type,
+        argMax(contact_value, dbt_valid_from) as contact_value,
+        argMax(contact_role,  dbt_valid_from) as contact_role,
+        max(dbt_valid_from)                          as current_dbt_valid_from
     from {{ this }}
-    where dbt_valid_to = toDateTime('9999-12-31 00:00:00')
+    where dbt_valid_to = toDateTime('2106-02-07 06:28:15')
     group by site_unique_code
 ),
 
@@ -168,12 +156,9 @@ closed_records as (
         t.contact_type,
         t.contact_value,
         t.contact_role,
-        t.contact_is_primary,
-        t.contact_valid_from,
-        t.contact_valid_to,
         t._row_hash,
         0               as is_current,
-        t.dbt_valid_from,
+        t.current_dbt_valid_from as dbt_valid_from,
         now()           as dbt_valid_to,
         now()           as dbt_updated_at
     from current_in_target t
@@ -199,13 +184,10 @@ new_records as (
         s.contact_type,
         s.contact_value,
         s.contact_role,
-        s.contact_is_primary,
-        s.contact_valid_from,
-        s.contact_valid_to,
         s._row_hash,
         1                                   as is_current,
         now()                               as dbt_valid_from,
-        toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+        toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
         now()                               as dbt_updated_at
     from source s
     where s.site_unique_code in (select site_unique_code from changed)
@@ -236,13 +218,10 @@ select
     contact_type,
     contact_value,
     contact_role,
-    contact_is_primary,
-    contact_valid_from,
-    contact_valid_to,
     _row_hash,
     1                                   as is_current,
     now()                               as dbt_valid_from,
-    toDateTime('9999-12-31 00:00:00')   as dbt_valid_to,
+    toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
     now()                               as dbt_updated_at
 from source
 
