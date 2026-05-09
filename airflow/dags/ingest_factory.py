@@ -91,7 +91,7 @@ class IngestFactory:
         conn=psycopg2.connect(os.getenv('POSTGRES_CONNECTION'))
         with conn.cursor() as cur:
             cur.execute("""
-            SELECT last_loaded FROM product.bronze_watermark
+            SELECT last_loaded FROM meta.bronze_watermark
             WHERE dag_id = %s""", (self.dag_id,))
             row=cur.fetchone()
         conn.close()
@@ -101,7 +101,7 @@ class IngestFactory:
         conn=psycopg2.connect(os.getenv('POSTGRES_CONNECTION'))
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO product.bronze_watermark (dag_id, last_loaded) VALUES (%s, %s)
+            INSERT INTO meta.bronze_watermark (dag_id, last_loaded) VALUES (%s, %s)
             ON CONFLICT (dag_id) DO UPDATE SET last_loaded = EXCLUDED.last_loaded""", (self.dag_id, loaded_at))
         conn.commit()
         conn.close()
