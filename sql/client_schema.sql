@@ -4,7 +4,8 @@ CREATE TABLE client.dict_gender
 (
     gender_code VARCHAR(10) PRIMARY KEY,
     gender_name VARCHAR(50) NOT NULL,
-    created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE client.dict_country
@@ -42,14 +43,16 @@ CREATE TABLE client.dict_indicator
     indicator_type        VARCHAR(50) PRIMARY KEY,
     indicator_description VARCHAR(255),
     indicator_rules       TEXT,
-    created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE client.dict_civil
 (
     civil_status_type        VARCHAR(50) PRIMARY KEY,
     civil_status_description VARCHAR(255),
-    created_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE client.dict_contact
@@ -57,7 +60,8 @@ CREATE TABLE client.dict_contact
     contact_type        VARCHAR(50) PRIMARY KEY,
     contact_name        VARCHAR(100) NOT NULL,
     contact_description VARCHAR(255),
-    created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE client.dict_subscription
@@ -65,7 +69,8 @@ CREATE TABLE client.dict_subscription
     communication_code        VARCHAR(50) PRIMARY KEY,
     communication_name        VARCHAR(100) NOT NULL,
     communication_description VARCHAR(255),
-    created_at                TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at                TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE client.country_language
@@ -80,10 +85,6 @@ CREATE TABLE client.country_language
     CONSTRAINT fk_cl_language FOREIGN KEY (language_code) REFERENCES client.dict_language (language_code)
 );
 
--- =========================
--- TABELA GŁÓWNA
--- =========================
-
 CREATE TABLE client.customer
 (
     person_id            VARCHAR(12) PRIMARY KEY,
@@ -93,38 +94,35 @@ CREATE TABLE client.customer
     birth_date           DATE,
     passport_number      VARCHAR(20),
     gender_code          VARCHAR(10),
-    civil_status_code    VARCHAR(10),
+    civil_status_code    VARCHAR(50),
     registration_date    TIMESTAMP    NOT NULL,
     creation_application VARCHAR(50),
+    is_deleted           BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id       VARCHAR(100),
 
     CONSTRAINT fk_customer_gender FOREIGN KEY (gender_code) REFERENCES client.dict_gender (gender_code),
-    CONSTRAINT fk_customer_civil_staus FOREIGN KEY (civil_status_code) REFERENCES client.dict_civil (civil_status_type)
+    CONSTRAINT fk_customer_civil_status FOREIGN KEY (civil_status_code) REFERENCES client.dict_civil (civil_status_type)
 
 );
 
 CREATE TABLE client.loyalty_status
 (
-    id              SERIAL PRIMARY KEY,
-    identifier_id   VARCHAR(12) NOT NULL,
-    person_id       VARCHAR(12) NOT NULL,
-    status_code     VARCHAR(20) NOT NULL,
-    is_current      BOOLEAN     NOT NULL DEFAULT TRUE,
-    start_date      DATE        NOT NULL,
-    end_date        DATE,
-    evaluation_date DATE,
-    correlation_id  VARCHAR(100),
+    identifier_id  VARCHAR(12) PRIMARY KEY,
+    person_id      VARCHAR(12) NOT NULL,
+    status_code    VARCHAR(20) NOT NULL,
+    created_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    correlation_id VARCHAR(100),
 
     CONSTRAINT fk_ls_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
     CONSTRAINT fk_ls_status FOREIGN KEY (status_code) REFERENCES client.dict_loyalty_status (status_code),
-    CONSTRAINT uq_loyalty_status_customer UNIQUE (identifier_id,person_id, status_code,start_date)
+    CONSTRAINT uq_loyalty_status_person UNIQUE (person_id)
 );
 
 CREATE TABLE client.language
 (
-    id             SERIAL PRIMARY KEY,
     person_id      VARCHAR(12) NOT NULL,
     language_code  VARCHAR(10) NOT NULL,
     language_level VARCHAR(10),
@@ -132,27 +130,26 @@ CREATE TABLE client.language
     updated_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id VARCHAR(100),
 
+    PRIMARY KEY (person_id, language_code),
     CONSTRAINT fk_lang_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
-    CONSTRAINT fk_lang_language FOREIGN KEY (language_code) REFERENCES client.dict_language (language_code),
-    CONSTRAINT uq_language_person UNIQUE (person_id, language_code)
+    CONSTRAINT fk_lang_language FOREIGN KEY (language_code) REFERENCES client.dict_language (language_code)
 );
 
 CREATE TABLE client.nationality
 (
-    id             SERIAL PRIMARY KEY,
     person_id      VARCHAR(12) NOT NULL,
     country_code   VARCHAR(3)  NOT NULL,
     created_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id VARCHAR(100),
 
+    PRIMARY KEY (person_id, country_code),
     CONSTRAINT fk_nat_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
-    CONSTRAINT fk_nat_country FOREIGN KEY (country_code) REFERENCES client.dict_country (country_code),
-    CONSTRAINT uq_nationality_person UNIQUE (person_id, country_code)
+    CONSTRAINT fk_nat_country FOREIGN KEY (country_code) REFERENCES client.dict_country (country_code)
 );
 
 CREATE TABLE client.customer_indicator
 (
-    id             SERIAL PRIMARY KEY,
     person_id      VARCHAR(12) NOT NULL,
     type           VARCHAR(50) NOT NULL,
     is_active      BOOLEAN     NOT NULL DEFAULT TRUE,
@@ -160,17 +157,16 @@ CREATE TABLE client.customer_indicator
     updated_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id VARCHAR(100),
 
+    PRIMARY KEY (person_id, type),
     CONSTRAINT fk_ci_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
-    CONSTRAINT fk_ci_indicator FOREIGN KEY (type) REFERENCES client.dict_indicator (indicator_type),
-    CONSTRAINT uq_ci_person UNIQUE (person_id, type)
+    CONSTRAINT fk_ci_indicator FOREIGN KEY (type) REFERENCES client.dict_indicator (indicator_type)
 
 );
 
 CREATE TABLE client.address
 (
-    id               SERIAL PRIMARY KEY,
     person_id        VARCHAR(12) NOT NULL,
-    address_type     VARCHAR(50),
+    address_type     VARCHAR(50) NOT NULL,
     option_channel   BOOLEAN              DEFAULT TRUE,
     address_street   VARCHAR(200),
     address_zip_code VARCHAR(20),
@@ -178,19 +174,17 @@ CREATE TABLE client.address
     country_code     VARCHAR(3),
     geo_coordinates_x_value NUMERIC,
     geo_coordinates_y_value NUMERIC,
-    is_current       BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id   VARCHAR(100),
 
+    PRIMARY KEY (person_id, address_type),
     CONSTRAINT fk_addr_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
-    CONSTRAINT fk_addr_country FOREIGN KEY (country_code) REFERENCES client.dict_country (country_code),
-    CONSTRAINT uq_address_person UNIQUE (person_id, address_type)
+    CONSTRAINT fk_addr_country FOREIGN KEY (country_code) REFERENCES client.dict_country (country_code)
 );
 
 CREATE TABLE client.contact
 (
-    id                SERIAL PRIMARY KEY,
     person_id         VARCHAR(12)  NOT NULL,
     contact_type      VARCHAR(50)  NOT NULL,
     value             VARCHAR(255) NOT NULL,
@@ -202,15 +196,14 @@ CREATE TABLE client.contact
     updated_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id    VARCHAR(100),
 
+    PRIMARY KEY (person_id, contact_type),
     CONSTRAINT fk_cont_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
-    CONSTRAINT fk_cont_type FOREIGN KEY (contact_type) REFERENCES client.dict_contact (contact_type),
-    CONSTRAINT uq_contact_person UNIQUE (person_id, contact_type, value)
+    CONSTRAINT fk_cont_type FOREIGN KEY (contact_type) REFERENCES client.dict_contact (contact_type)
 );
 
 
 CREATE TABLE client.communication_subscription
 (
-    id                       SERIAL PRIMARY KEY,
     person_id                VARCHAR(12) NOT NULL,
     communication_code       VARCHAR(50) NOT NULL,
     value                    VARCHAR(255),
@@ -221,14 +214,13 @@ CREATE TABLE client.communication_subscription
     updated_at               TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id           VARCHAR(100),
 
+    PRIMARY KEY (person_id, communication_code),
     CONSTRAINT fk_cs_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
-    CONSTRAINT fk_cs_subscription FOREIGN KEY (communication_code) REFERENCES client.dict_subscription (communication_code),
-    CONSTRAINT uq_cs_person UNIQUE (person_id, communication_code)
+    CONSTRAINT fk_cs_subscription FOREIGN KEY (communication_code) REFERENCES client.dict_subscription (communication_code)
 );
 
 CREATE TABLE client.digital_access
 (
-    id                            SERIAL PRIMARY KEY,
     person_id                     VARCHAR(12) NOT NULL,
     username                      VARCHAR(100),
     email_user                    VARCHAR(255),
@@ -239,64 +231,116 @@ CREATE TABLE client.digital_access
     updated_at                    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id                VARCHAR(100),
 
-    CONSTRAINT fk_da_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id),
-    CONSTRAINT uq_da_person UNIQUE (person_id)
+    PRIMARY KEY (person_id),
+    CONSTRAINT fk_da_customer FOREIGN KEY (person_id) REFERENCES client.customer (person_id)
 
 );
 
+CREATE OR REPLACE FUNCTION client.set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_loyalty_status_customer ON client.loyalty_status (identifier_id);
-CREATE INDEX idx_loyalty_status_person ON client.loyalty_status (person_id);
+CREATE TRIGGER trg_dict_country_updated_at
+    BEFORE UPDATE ON client.dict_country
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_dict_language_updated_at
+    BEFORE UPDATE ON client.dict_language
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_dict_loyalty_status_updated_at
+    BEFORE UPDATE ON client.dict_loyalty_status
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_dict_gender_updated_at
+    BEFORE UPDATE ON client.dict_gender
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_dict_indicator_updated_at
+    BEFORE UPDATE ON client.dict_indicator
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_dict_civil_updated_at
+    BEFORE UPDATE ON client.dict_civil
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_dict_contact_updated_at
+    BEFORE UPDATE ON client.dict_contact
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_dict_subscription_updated_at
+    BEFORE UPDATE ON client.dict_subscription
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_customer_updated_at
+    BEFORE UPDATE ON client.customer
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_loyalty_status_updated_at
+    BEFORE UPDATE ON client.loyalty_status
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_nationality_updated_at
+    BEFORE UPDATE ON client.nationality
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_language_updated_at
+    BEFORE UPDATE ON client.language
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_customer_indicator_updated_at
+    BEFORE UPDATE ON client.customer_indicator
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_address_updated_at
+    BEFORE UPDATE ON client.address
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_contact_updated_at
+    BEFORE UPDATE ON client.contact
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_communication_subscription_updated_at
+    BEFORE UPDATE ON client.communication_subscription
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+CREATE TRIGGER trg_digital_access_updated_at
+    BEFORE UPDATE ON client.digital_access
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
+
+
+
+CREATE INDEX idx_customer_gender ON client.customer (gender_code);
+CREATE INDEX idx_customer_civil ON client.customer (civil_status_code);
 
 CREATE INDEX idx_loyalty_status_code ON client.loyalty_status (status_code);
-CREATE INDEX idx_loyalty_status_current ON client.loyalty_status (is_current);
+CREATE INDEX idx_loyalty_status_updated ON client.loyalty_status (updated_at);
 
-CREATE INDEX idx_language_customer ON client.language (person_id);
 CREATE INDEX idx_language_code ON client.language (language_code);
+CREATE INDEX idx_language_updated ON client.language (updated_at);
 
-CREATE INDEX idx_nationality_customer ON client.nationality (person_id);
 CREATE INDEX idx_nationality_country ON client.nationality (country_code);
+CREATE INDEX idx_nationality_updated ON client.nationality (updated_at);
 
-CREATE INDEX idx_customer_indicator_person ON client.customer_indicator (person_id);
 CREATE INDEX idx_customer_indicator_type ON client.customer_indicator (type);
+CREATE INDEX idx_customer_indicator_updated ON client.customer_indicator (updated_at);
 
-CREATE INDEX idx_address_customer ON client.address (person_id);
 CREATE INDEX idx_address_country ON client.address (country_code);
-CREATE INDEX idx_address_current ON client.address (is_current);
+CREATE INDEX idx_address_updated ON client.address (updated_at);
 
-CREATE INDEX idx_contact_customer ON client.contact (person_id);
 CREATE INDEX idx_contact_type ON client.contact (contact_type);
+CREATE INDEX idx_contact_updated ON client.contact (updated_at);
 
-CREATE INDEX idx_comm_sub_customer ON client.communication_subscription (person_id);
 CREATE INDEX idx_comm_sub_code ON client.communication_subscription (communication_code);
+CREATE INDEX idx_comm_sub_updated ON client.communication_subscription (updated_at);
 
-CREATE INDEX idx_digital_access_customer ON client.digital_access (person_id);
 CREATE INDEX idx_digital_access_username ON client.digital_access (username);
-DROP TABLE client.dead_letter;
-CREATE TABLE client.dead_letter
-(
-    id                 SERIAL PRIMARY KEY,
-    inserted_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    error_code         VARCHAR(100),
-    error_message      TEXT,
-    retry_count        INTEGER                  DEFAULT 0,
-    status             VARCHAR(20)              DEFAULT 'NEW'
-        CONSTRAINT check_status
-            CHECK (status IN ('NEW', 'RETRIED', 'RESOLVED', 'IGNORED')),
-    person_id          VARCHAR(50),
-    correlation_id     VARCHAR(50),
-    source_application VARCHAR(50),
-    raw_payload        JSONB NOT NULL
-);
+CREATE INDEX idx_digital_access_updated ON client.digital_access (updated_at);
 
-ALTER TABLE client.dead_letter
-    ADD CONSTRAINT uq_dlq_dedup UNIQUE (person_id, correlation_id, error_code);
-
-CREATE INDEX idx_dlq_person_id ON client.dead_letter (person_id);
-CREATE INDEX idx_dlq_correlation_id ON client.dead_letter (correlation_id);
-CREATE INDEX idx_dlq_status ON client.dead_letter (status);
-CREATE INDEX idx_dlq_inserted_at ON client.dead_letter (inserted_at);
-CREATE INDEX idx_dlq_raw_payload ON client.dead_letter USING GIN (raw_payload);
 
 INSERT INTO client.dict_gender (gender_code, gender_name)
 VALUES ('M', 'Male'),
@@ -365,7 +409,7 @@ VALUES
 ('UA', 'en'),
 ('LT', 'en'),
 -- regional/neighbor languages
-('CZ', 'sk'),
+('CZ', 'sk'), 
 ('SK', 'cs'),
 ('DE', 'pl'),
 ('LT', 'pl'),

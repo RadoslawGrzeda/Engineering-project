@@ -98,3 +98,35 @@ CREATE TABLE meta.bronze_watermark (
 CREATE TRIGGER trg_bronze_watermark_updated_at
     BEFORE UPDATE ON meta.bronze_watermark
     FOR EACH ROW EXECUTE FUNCTION meta.set_updated_at();
+
+
+
+CREATE TABLE meta.client_dead_letter
+(
+    id                 SERIAL PRIMARY KEY,
+    inserted_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    error_code         VARCHAR(100),
+    error_message      TEXT,
+    retry_count        INTEGER                  DEFAULT 0,
+    status             VARCHAR(20)              DEFAULT 'NEW'
+        CONSTRAINT check_status
+            CHECK (status IN ('NEW', 'RETRIED', 'RESOLVED', 'IGNORED')),
+    person_id          VARCHAR(12),
+    correlation_id     VARCHAR(100),
+    source_application VARCHAR(50),
+    raw_payload        JSONB NOT NULL,
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_cdl_dedup UNIQUE (person_id, correlation_id, error_code)
+);
+
+CREATE INDEX idx_client_dead_letter_person_id ON meta.client_dead_letter (person_id);
+CREATE INDEX idx_client_dead_letter_correlation_id ON meta.client_dead_letter (correlation_id);
+CREATE INDEX idx_client_dead_letter_status ON meta.client_dead_letter (status);
+CREATE INDEX idx_client_dead_letter_inserted_at ON meta.client_dead_letter (inserted_at);
+CREATE INDEX idx_client_dead_letter_raw_payload ON meta.client_dead_letter USING GIN (raw_payload);
+
+CREATE TRIGGER trg_client_dead_letter_updated_at
+    BEFORE UPDATE ON meta.client_dead_letter
+    FOR EACH ROW EXECUTE FUNCTION meta.set_updated_at();
