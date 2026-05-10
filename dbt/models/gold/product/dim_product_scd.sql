@@ -94,8 +94,7 @@ changed as (
 new_entries as (
     select s.art_key
     from source s
-    left join current_in_target t on s.art_key = t.art_key
-    where t.art_key is null
+    where s.art_key not in (select art_key from current_in_target)
 ),
 
 closed_records as (

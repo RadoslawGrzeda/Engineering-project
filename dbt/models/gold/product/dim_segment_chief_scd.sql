@@ -60,8 +60,7 @@ changed as (
 new_entries as (
     select s.segment_chief_id
     from source s
-    left join current_in_target t on s.segment_chief_id = t.segment_chief_id
-    where t.segment_chief_id is null
+    where s.segment_chief_id not in (select segment_chief_id from current_in_target)
 ),
 
 closed_records as (

@@ -57,8 +57,7 @@ changed as (
 new_entries as (
     select s.chief_id
     from source s
-    left join current_in_target t on s.chief_id = t.chief_id
-    where t.chief_id is null
+    where s.chief_id not in (select chief_id from current_in_target)
 ),
 
 closed_records as (

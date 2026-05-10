@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: dim_product
+  - name: dim_product_scd
     description: "SCD2 — historia zmian produktów wraz z hierarchią (dział, sektor, segment, kontrahent)."
     columns:
       - name: art_key
@@ -9,7 +9,7 @@ models:
         tests:
           - not_null
 
-  - name: dim_chief
+  - name: dim_chief_scd
     description: "SCD2 — historia zmian danych kierowników."
     columns:
       - name: chief_id
@@ -17,7 +17,7 @@ models:
         tests:
           - not_null
 
-  - name: dim_segment_chief
+  - name: dim_segment_chief_scd
     description: "SCD2 — historia przypisań kierowników do segmentów."
     columns:
       - name: segment_chief_id
@@ -25,10 +25,18 @@ models:
         tests:
           - not_null
 
-  - name: dim_pos_information
+  - name: dim_pos_information_scd
     description: "SCD2 — historia zmian informacji cenowych produktów w POS (tylko aktywne rekordy ze źródła)."
     columns:
       - name: pos_information_id
         description: "Identyfikator rekordu POS."
+        tests:
+          - not_null
+
+  - name: dim_contract_scd  
+    description: "SCD2 — historia zmian kontraktów wraz z powiązanym kontrahentem."
+    columns:
+      - name: contract_id
+        description: "Identyfikator kontraktu."
         tests:
           - not_null

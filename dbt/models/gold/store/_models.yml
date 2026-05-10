@@ -1,11 +1,10 @@
 version: 2
 
 models:
-  - name: gold_site
+  - name: dim_store_scd
     description: "Docelowa tabela GOLD dla obszaru sklepow wraz z danymi kontaktowymi i adresowymi."
     columns:
       - name: site_unique_code
         description: "Techniczny identyfikator sklepu."
         tests:
           - not_null
-          - unique

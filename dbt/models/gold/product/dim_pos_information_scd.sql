@@ -10,9 +10,9 @@ with source_raw as (
         id as pos_information_id,
         art_key,
         ean,
-        vat_rate,
-        price_net,
-        price_gross,
+        toFloat64(vat_rate)    as vat_rate,
+        toFloat64(price_net)   as price_net,
+        toFloat64(price_gross) as price_gross,
         valid_from  as src_valid_from,
         updated_at,
         MD5(concat(
@@ -74,8 +74,7 @@ changed as (
 new_entries as (
     select s.art_key
     from source s
-    left join current_in_target t on s.art_key = t.art_key
-    where t.art_key is null
+    where s.art_key not in (select art_key from current_in_target)
 ),
 
 closed_records as (

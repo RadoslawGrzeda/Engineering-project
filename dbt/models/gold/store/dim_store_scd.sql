@@ -37,8 +37,8 @@ site_address as (
         argMax(street,        updated_at) as street,
         argMax(city_code,     updated_at) as city_code,
         argMax(country_code,  updated_at) as country_code,
-        argMax(latitude,      updated_at) as latitude,
-        argMax(longitude,     updated_at) as longitude
+        toFloat64(argMax(latitude,      updated_at)) as latitude,
+        toFloat64(argMax(longitude,     updated_at)) as longitude
     from {{ ref('stg_store__site_address') }}
     group by site_unique_code
 ),
@@ -133,8 +133,7 @@ changed as (
 new_sites as (
     select s.site_unique_code
     from source s
-    left join current_in_target t on s.site_unique_code = t.site_unique_code
-    where t.site_unique_code is null
+    where s.site_unique_code not in (select site_unique_code from current_in_target)
 ),
 
 closed_records as (
