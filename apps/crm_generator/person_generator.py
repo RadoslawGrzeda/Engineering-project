@@ -1,10 +1,14 @@
 import json
 import uuid
 from datetime import datetime, timedelta, date
+from pathlib import Path
 from random import randint, choice, uniform
 from faker import Faker
 
 from apps.logger_config import correlation_id
+
+IDENTIFIER_COUNTER_FILE = Path(__file__).with_name("identifier.csv")
+IDENTIFIER_FLUSH_INTERVAL = 100
 
 FAKER_BY_COUNTRY = {
     "PL": Faker("pl_PL"),
@@ -78,15 +82,40 @@ ACCOUNT_INDICATOR_TYPES = [
     {"type": "SENIOR", "value": "true"},
     {"type": "KDR", "value": "true"},
 ]
-# stworz mi metode obliczajaca wiek persona na podstawie daty urodzenia i aktualnej daty, a następnie wykorzystaj ją w generowaniu wskaźnika seniora (SENIOR) w metodzie _generate_account_indicators.
-# Wskaźnik SENIOR powinien być aktywny (value_account_indicator = 'ACTIVE')
-# dla osób w wieku 60 lat i starszych, z prawdopodobieństwem 50%,
-# a dla pozostałych osób powinien być None.
-
 
 class PersonGenerator:
     def __init__(self):
         self.fake = Faker("pl_PL")
+        self._identifier_path = IDENTIFIER_COUNTER_FILE
+        self._identifier_flush_interval = IDENTIFIER_FLUSH_INTERVAL
+        self._identifier_generated_since_flush = 0
+        self._identifier_counter = self._load_identifier_counter()
+
+
+    def _load_identifier_counter(self) -> int:
+        raw_value = self._identifier_path.read_text(encoding="utf-8").strip()
+        if not raw_value:
+            return 0
+        return int(raw_value)
+
+
+    def _write_identifier_counter(self, value: int):
+        self._identifier_path.write_text(str(value), encoding="utf-8")
+
+
+    def _generate_identifier_id(self) -> str:
+        self._identifier_counter += 1
+        self._identifier_generated_since_flush += 1
+
+        if self._identifier_generated_since_flush >= self._identifier_flush_interval:
+            self._flush_counter()
+
+        return str(self._identifier_counter)
+
+
+    def _flush_counter(self):
+        self._write_identifier_counter(self._identifier_counter)
+        self._identifier_generated_since_flush = 0
 
 
     def _calculate_age(self, birthdate):
@@ -128,14 +157,21 @@ class PersonGenerator:
 
     def _generate_loyalty(self, person_id: str, registration_date: str):
         start_date = datetime.fromisoformat(registration_date)
-        end_date = start_date + timedelta(days=365)
+
+        status = choice(["Bronze"] * 4 + ["Silver"] * 3 + ["Gold"] * 2 + ["Platinum"])
+
+        if randint(0, 100) < 80:
+            end_date = None
+        else:
+            days_active = randint(30, (date.today() - start_date.date()).days or 30)
+            end_date = (start_date + timedelta(days=days_active)).date().isoformat()
 
         return {
-            "identifier_id": str(uuid.uuid4()),
+            "identifier_id": self._generate_identifier_id(),
             "person_id": person_id,
-            "loyalty_status": 'Silver',
+            "loyalty_status": status,
             "start_date": start_date.date().isoformat(),
-            "end_date": end_date.date().isoformat(),
+            "end_date": end_date,
         }
 
 
@@ -200,7 +236,6 @@ class PersonGenerator:
             "preferred_channel": randint(0, 100) < 70,
             "option_channel": choice(["personal", "work"]),
             "flag_valid": randint(0, 100) < 90,
-            # "source": choice(["STORE_POS", "ECOMMERCE", "MOBILE_APP"]),
             "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
             "last_modified_date": datetime.combine(self.fake.date_between(start_date="-1y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
             "is_deleted": False,
@@ -261,12 +296,12 @@ class PersonGenerator:
 
 
     def _generate_digital_access(self, person_id: str, email: str):
-        is_active = randint(0, 100) < 80
+        is_active = randint(0, 100) < 90
 
         return {
             "id": str(uuid.uuid4()),
             "person_id": person_id,
-            "username": self.fake.user_name() if is_active else None,
+            "username": self.fake.user_name(),
             "email_user": email,
             "is_active": is_active,
             "last_login_date": datetime.combine(self.fake.date_between(start_date="-30d", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S") if is_active else None,
@@ -281,13 +316,8 @@ class PersonGenerator:
         return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
     def _generate_account_indicators(self, person_id: str,date_of_birth: datetime,civil_status) -> dict:
-        # indicators = []
-        # for ind in ACCOUNT_INDICATOR_TYPES:
-        #     if randint(0, 100) < 40:
-        #         indicators.append({
         age=self._get_age(date_of_birth)
 
-        # if age >=60:
         is_senior = randint(0, 100) < 50 if age>=60 else None
 
         is_kdf=randint(0, 100) < 50 if civil_status == "married" else None
@@ -313,18 +343,6 @@ class PersonGenerator:
                 "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
             }
         return None
-
-        # return = person
-        #             "id": str(uuid.uuid4()),
-        #             "person_id": person_id,
-        #             "type_account_indicator": ind["type"],
-        #             "value_account_indicator": ind["value"],
-        #             "last_modified_date": self.fake.date_between(start_date="-1y", end_date="today").isoformat(),
-        #             "is_deleted": False,
-        #             "created_date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
-        #         })
-        # return indicators
-
 
     def _generate_nationalities(self, person_id: str, primary_country_code: str):
         nationalities = [{"person_id": person_id, "country_code": primary_country_code}]

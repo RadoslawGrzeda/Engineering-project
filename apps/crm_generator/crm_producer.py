@@ -1,7 +1,6 @@
 import time
 
-from person_generator import PersonGenerator
-# from crm_generator import CrmGenerator
+from apps.crm_generator.person_generator import PersonGenerator
 from kafka import KafkaProducer
 from dotenv import load_dotenv
 import os
@@ -18,7 +17,6 @@ class CrmProducer:
         self.generator=PersonGenerator()
         self.producer = KafkaProducer(
                                         bootstrap_servers=os.getenv('KAFKA_BOOTSTRAP_SERVERS'),
-                                        # key_serializer=lambda v: json.dumps(v).encode('utf-8'),
                                         value_serializer=lambda v: json.dumps(v).encode('utf-8'),
                                     )
         self.topic=os.getenv('KAFKA_TOPIC')
