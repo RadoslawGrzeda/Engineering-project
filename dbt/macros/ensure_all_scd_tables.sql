@@ -45,31 +45,43 @@
     },
     {
       'schema':   'gold_product',
-      'table':    'dim_chief',
+      'table':    'dim_chief_scd',
       'order_by': '(chief_id, dbt_valid_from)',
       'columns':  'chief_id String, first_name Nullable(String), last_name Nullable(String), phone_number Nullable(String), email Nullable(String)'
     },
     {
       'schema':   'gold_product',
-      'table':    'dim_product',
+      'table':    'dim_contract_scd',
+      'order_by': '(contract_id, dbt_valid_from)',
+      'columns':  'contract_id Int32, contractor_id Int32, contract_number Nullable(String), signed_date Nullable(Date)'
+    },
+    {
+      'schema':   'gold_product',
+      'table':    'dim_contractor_scd',
+      'order_by': '(contractor_id, dbt_valid_from)',
+      'columns':  'contractor_id Int32, contractor_name Nullable(String), contractor_phone_number Nullable(String), contractor_email_address Nullable(String), contractor_address Nullable(String)'
+    },
+    {
+      'schema':   'gold_product',
+      'table':    'dim_product_scd',
       'order_by': '(art_key, dbt_valid_from)',
       'columns':  'art_key Int32, art_number Nullable(String), brand Nullable(String), article_codification_date Nullable(Date), department_name Nullable(String), sector_code Nullable(String), sector_name Nullable(String), segment_code Nullable(String), segment_name Nullable(String), contractor_name Nullable(String)'
     },
     {
       'schema':   'gold_product',
-      'table':    'dim_segment_chief',
+      'table':    'dim_segment_chief_scd',
       'order_by': '(segment_chief_id, dbt_valid_from)',
       'columns':  'segment_chief_id Int32, chief_id String, segment_id Nullable(Int32), segment_code Nullable(String), src_valid_from Nullable(Date)'
     },
     {
       'schema':   'gold_product',
-      'table':    'dim_pos_information',
+      'table':    'dim_pos_information_scd',
       'order_by': '(art_key, dbt_valid_from)',
-      'columns':  'pos_information_id Int32, art_key Int32, ean Nullable(String), vat_rate Nullable(String), price_net Nullable(Float64), price_gross Nullable(Float64), src_valid_from Nullable(Date)'
+      'columns':  'pos_information_id Int32, art_key Int32, ean Nullable(String), vat_rate Nullable(Float64), price_net Nullable(Float64), price_gross Nullable(Float64), src_valid_from Nullable(Date)'
     },
     {
-      'schema':   'gold_shop',
-      'table':    'dim_site',
+      'schema':   'gold_store',
+      'table':    'dim_store_scd',
       'order_by': '(site_unique_code, dbt_valid_from)',
       'columns':  'site_unique_code String, site_code Nullable(String), site_name Nullable(String), status_code Nullable(String), opening_date Nullable(Date), closing_date Nullable(Date), format_code Nullable(String), zip_code Nullable(String), city Nullable(String), street Nullable(String), city_code Nullable(String), country_code Nullable(String), latitude Nullable(Float64), longitude Nullable(Float64), contact_type Array(String), contact_value Array(String), contact_role Array(String)'
     }

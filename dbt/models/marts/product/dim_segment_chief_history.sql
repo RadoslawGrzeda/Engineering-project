@@ -13,4 +13,4 @@ select
     is_current,
     dbt_valid_from as valid_from,
     dbt_valid_to   as valid_to
-from {{ ref('dim_segment_chief') }} FINAL
+from {{ ref('dim_segment_chief_scd') }} FINAL

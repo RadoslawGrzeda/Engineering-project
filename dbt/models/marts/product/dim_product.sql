@@ -15,5 +15,5 @@ select
     segment_code,
     segment_name,
     contractor_name
-from {{ ref('dim_product') }} FINAL
+from {{ ref('dim_product_scd') }} FINAL
 where is_current = 1

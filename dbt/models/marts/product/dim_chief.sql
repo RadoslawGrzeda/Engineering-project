@@ -10,5 +10,5 @@ select
     last_name,
     phone_number,
     email
-from {{ ref('dim_chief') }} FINAL
+from {{ ref('dim_chief_scd') }} FINAL
 where is_current = 1

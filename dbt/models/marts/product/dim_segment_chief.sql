@@ -10,5 +10,5 @@ select
     segment_id,
     segment_code,
     src_valid_from
-from {{ ref('dim_segment_chief') }} FINAL
+from {{ ref('dim_segment_chief_scd') }} FINAL
 where is_current = 1

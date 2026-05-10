@@ -12,5 +12,5 @@ select
     price_net,
     price_gross,
     src_valid_from
-from {{ ref('dim_pos_information') }} FINAL
+from {{ ref('dim_pos_information_scd') }} FINAL
 where is_current = 1

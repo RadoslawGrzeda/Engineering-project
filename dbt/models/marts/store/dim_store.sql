@@ -22,5 +22,5 @@ select
     contact_type,
     contact_value,
     contact_role
-from {{ ref('dim_site') }} FINAL
+from {{ ref('dim_store_scd') }} FINAL
 where is_current = 1
