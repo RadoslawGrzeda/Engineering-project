@@ -7,9 +7,11 @@ import logging
 import psycopg2
 import psycopg2.pool
 from dotenv import load_dotenv
-from address_geocoder import AddressGeocoder
+from apps.geocoding_crm_address.address_geocoder import AddressGeocoder
+from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env")
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ class GeocodingConsumer:
 
     def __init__(self):
         self.geocoder = AddressGeocoder()
-        self.KAFKA_BROKER_URL = os.getenv('KAFKA_BROKER_URL')
+        self.KAFKA_BROKER_URL = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
         self.KAFKA_TOPIC = os.getenv('KAFKA_TOPIC')
         self.KAFKA_GROUP_ID = os.getenv('KAFKA_GROUP_ID')
         self.POSTGRES_URL = os.getenv('POSTGRES_CONNECTION')
