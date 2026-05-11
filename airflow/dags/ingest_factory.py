@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class IngestFactory:
-    def __init__(self, dag_id : str, config_file: str, schedule: str = "0 2 * * *",
+    def __init__(self, dag_id: str, config_file: str, schedule: str = "0 2 * * *",
                 start_date: pendulum.DateTime | None = None, tags: list[str] | None = None,
                 dbt_dag_id: str | None = None) -> None:
         self.BRONZE_DB='bronze'
@@ -201,7 +201,9 @@ class IngestFactory:
             trigger_dbt = TriggerDagRunOperator(
                 task_id='trigger_dbt',
                 trigger_dag_id=self.dbt_dag_id,
-                wait_for_completion=False,
+                wait_for_completion=True,
+                allowed_states=['success'],
+                failed_states=['failed'],
                 conf={"correlation_id": "{{ dag_run.conf.get('correlation_id', '') }}"},
             ) if self.dbt_dag_id else None
 
