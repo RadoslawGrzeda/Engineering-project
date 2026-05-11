@@ -7,6 +7,14 @@ from faker import Faker
 
 from apps.logger_config import correlation_id
 
+SCHEMA_VERSION = "1.0"
+SOURCE_SYSTEM = "CRM"
+
+EMAIL_DOMAINS = [
+    "gmail.com", "outlook.com", "yahoo.com", "wp.pl", "onet.pl",
+    "interia.pl", "o2.pl", "icloud.com", "protonmail.com",
+]
+
 IDENTIFIER_COUNTER_FILE = Path(__file__).with_name("identifier.csv")
 IDENTIFIER_FLUSH_INTERVAL = 100
 
@@ -152,6 +160,7 @@ class PersonGenerator:
             "passport_number": fake.bothify("??#######").upper() if randint(0, 100) > 95 else None,
             "registration_date": registration_date.isoformat(),
             "creation_application": choice(["STORE_POS", "WEBSITE", "MOBILE_APPLICATION"]),
+            "event_time": datetime.now().isoformat(),
         }
 
 
@@ -163,8 +172,12 @@ class PersonGenerator:
         if randint(0, 100) < 80:
             end_date = None
         else:
-            days_active = randint(30, (date.today() - start_date.date()).days or 30)
-            end_date = (start_date + timedelta(days=days_active)).date().isoformat()
+            days_since_start = (date.today() - start_date.date()).days
+            if days_since_start < 30:
+                end_date = None
+            else:
+                days_active = randint(30, days_since_start)
+                end_date = (start_date + timedelta(days=days_active)).date().isoformat()
 
         return {
             "identifier_id": self._generate_identifier_id(),
@@ -224,6 +237,11 @@ class PersonGenerator:
 
 
 
+    def _generate_phone(self) -> str:
+        prefix = choice(['50', '51', '53', '57', '60', '66', '69', '72', '73', '78', '79', '88'])
+        number = self.fake.numerify(prefix + '#######')
+        return f'+48 {number[:3]} {number[3:6]} {number[6:]}'
+
     def _generate_contact_channels(self, person_id: str):
         channels = []
 
@@ -245,7 +263,7 @@ class PersonGenerator:
             "channel_id": str(uuid.uuid4()),
             "person_id": person_id,
             "channel_type": "phone",
-            "value": self.fake.phone_number(),
+            "value": self._generate_phone(),
             "flag_main_type": randint(0, 100) < 80,
             "preferred_channel": randint(0, 100) < 40,
             "option_channel": choice(["mobile", "landline"]),
@@ -262,7 +280,7 @@ class PersonGenerator:
                 "channel_id": str(uuid.uuid4()),
                 "person_id": person_id,
                 "channel_type": channel_type,
-                "value": self.fake.email() if channel_type == "email" else self.fake.phone_number(),
+                "value": self.fake.email() if channel_type == "email" else self._generate_phone(),
                 "flag_main_type": False,
                 "preferred_channel": False,
                 "option_channel": "work",
@@ -304,9 +322,9 @@ class PersonGenerator:
             "username": self.fake.user_name(),
             "email_user": email,
             "is_active": is_active,
-            "last_login_date": datetime.combine(self.fake.date_between(start_date="-30d", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S") if is_active else None,
+            "last_login_at": self.fake.date_time_between(start_date="-30d", end_date="now").strftime("%Y-%m-%d %H:%M:%S") if is_active else None,
             "created_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
-            "portal_user_confirmation_date": datetime.combine(self.fake.date_between(start_date="-5y", end_date="today"), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S") if is_active else None,
+            "portal_user_confirmation_at": self.fake.date_time_between(start_date="-5y", end_date="now").strftime("%Y-%m-%d %H:%M:%S") if is_active else None,
             'preferred_delivery_method':choice(['Courier','Parcel locker','Personal collection']) if is_active and randint(0,100)>70 else None,
         }
 
