@@ -464,7 +464,7 @@ class PersonUpdater:
         return {
             "event_id": event_id,
             "event_type": "CUSTOMER_UPDATED",
-            "event_timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_timestamp": datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
             "schema_version": SCHEMA_VERSION,
             "source_system": SOURCE_SYSTEM,
             "update_action": action,
