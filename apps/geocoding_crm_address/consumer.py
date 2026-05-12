@@ -69,7 +69,7 @@ class GeocodingConsumer:
             for message in self.consumer:
                 data = message.value
                 person_id = data.get('person_id')
-                address = data.get('address_address')
+                address = data.get('address_street')
 
                 if not person_id or not address:
                     logger.warning("Missing person_id or address_address in message, skipping")
