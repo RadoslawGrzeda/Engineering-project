@@ -80,7 +80,6 @@ CREATE TABLE client.country_language
     created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (country_code, language_code),
-
     CONSTRAINT fk_cl_country FOREIGN KEY (country_code) REFERENCES client.dict_country (country_code),
     CONSTRAINT fk_cl_language FOREIGN KEY (language_code) REFERENCES client.dict_language (language_code)
 );
@@ -101,6 +100,7 @@ CREATE TABLE client.customer
     created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id       VARCHAR(100),
+    event_time           TIMESTAMP,
 
     CONSTRAINT fk_customer_gender FOREIGN KEY (gender_code) REFERENCES client.dict_gender (gender_code),
     CONSTRAINT fk_customer_civil_status FOREIGN KEY (civil_status_code) REFERENCES client.dict_civil (civil_status_type)
@@ -225,8 +225,8 @@ CREATE TABLE client.digital_access
     username                      VARCHAR(100),
     email_user                    VARCHAR(255),
     is_active                     BOOLEAN     NOT NULL DEFAULT TRUE,
-    last_login_date               TIMESTAMP,
-    portal_user_confirmation_date TIMESTAMP,
+    last_login_at                 TIMESTAMP,
+    portal_user_confirmation_at   TIMESTAMP,
     created_at                    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     correlation_id                VARCHAR(100),
@@ -394,21 +394,20 @@ VALUES ('STORE_PROMO', 'Promotion in local store', 'Notifications about promotio
 
 INSERT INTO client.country_language (country_code, language_code)
 VALUES
--- native languages (from COUNTRY_LANGUAGE_MAP)
 ('PL', 'pl'),
 ('DE', 'de'),
 ('CZ', 'cs'),
 ('SK', 'sk'),
 ('UA', 'uk'),
 ('LT', 'lt'),
--- widely spoken second languages
+
 ('PL', 'en'),
 ('DE', 'en'),
 ('CZ', 'en'),
 ('SK', 'en'),
 ('UA', 'en'),
 ('LT', 'en'),
--- regional/neighbor languages
+
 ('CZ', 'sk'), 
 ('SK', 'cs'),
 ('DE', 'pl'),
