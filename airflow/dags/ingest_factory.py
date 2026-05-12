@@ -213,7 +213,8 @@ class IngestFactory:
             kwargs = make_kwargs(tables, wm)
             result = refresh_table.expand_kwargs(kwargs)
             db >> tables >> wm >> kwargs
+            saved = save_watermark(result)
             if trigger_dbt:
-                save_watermark(result) >> trigger_dbt
+                saved >> trigger_dbt
         return _dag()
 

@@ -52,8 +52,8 @@ def _dbt_op(task_id: str, select: str) -> DockerOperator:
     tags=["silver", "gold", "dbt", "store"],
 )
 def dbt_transform_store():
-    silver = _dbt_op("silver", "path:models/silver/shop")
-    gold = _dbt_op("gold", "path:models/gold/shop")
+    silver = _dbt_op("silver", "path:models/silver/store")
+    gold = _dbt_op("gold", "path:models/gold/store")
     silver >> gold
 
 
