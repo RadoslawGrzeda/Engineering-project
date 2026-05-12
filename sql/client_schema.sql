@@ -78,7 +78,7 @@ CREATE TABLE client.country_language
     country_code  VARCHAR(3)  NOT NULL,
     language_code VARCHAR(10) NOT NULL,
     created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
+    updated_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (country_code, language_code),
     CONSTRAINT fk_cl_country FOREIGN KEY (country_code) REFERENCES client.dict_country (country_code),
     CONSTRAINT fk_cl_language FOREIGN KEY (language_code) REFERENCES client.dict_language (language_code)
@@ -94,7 +94,7 @@ CREATE TABLE client.customer
     passport_number      VARCHAR(20),
     gender_code          VARCHAR(10),
     civil_status_code    VARCHAR(50),
-    registration_date    TIMESTAMP    NOT NULL,
+    registration_date    TIMESTAMP(0)   NOT NULL,
     creation_application VARCHAR(50),
     is_deleted           BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -312,6 +312,9 @@ CREATE TRIGGER trg_digital_access_updated_at
     BEFORE UPDATE ON client.digital_access
     FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
 
+CREATE TRIGGER trg_country_language_updated_at
+    BEFORE UPDATE ON client.country_language
+    FOR EACH ROW EXECUTE FUNCTION client.set_updated_at();
 
 
 CREATE INDEX idx_customer_gender ON client.customer (gender_code);
