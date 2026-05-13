@@ -24,19 +24,27 @@ with customer as (
 languages_by_person as (
     select
         l.person_id,
-        arrayStringConcat(arraySort(groupArray(l.code)), ',')                           as language_code,
-        arrayStringConcat(arraySort(groupArray(coalesce(dl.name, ''))), ',')             as language_name,
-        arrayStringConcat(arraySort(groupArray(coalesce(toString(l.level), ''))), ',')  as language_level
-    from {{ ref('stg_client__language') }} l
+        groupArray(l.code)                           as language_code,
+        groupArray(coalesce(dl.name, ''))            as language_name,
+        groupArray(coalesce(toString(l.level), ''))  as language_level
+    from (
+        select person_id, code, argMax(level, updated_at) as level
+        from {{ ref('stg_client__language') }}
+        group by person_id, code
+    ) l
     left join {{ ref('stg_client__dict_language') }} dl on l.code = dl.code
     group by l.person_id
 ),
 nationalities_by_person as (
     select
         n.person_id,
-        arrayStringConcat(arraySort(groupArray(n.code)), ',')                   as nationality_code,
-        arrayStringConcat(arraySort(groupArray(coalesce(dc.name, ''))), ',')    as nationality_name
-    from {{ ref('stg_client__nationality') }} n
+        groupArray(n.code)                as nationality_code,
+        groupArray(coalesce(dc.name, '')) as nationality_name
+    from (
+        select person_id, code
+        from {{ ref('stg_client__nationality') }}
+        group by person_id, code
+    ) n
     left join {{ ref('stg_client__dict_country') }} dc on n.code = dc.code
     group by n.person_id
 ),
@@ -60,11 +68,11 @@ source as (
         g.name                                                      as gender_name,
         cust.civil_status_code                                      as civil_status_code,
         if(cv.type = '', NULL, cv.civil_status_description)         as civil_status_description,
-        coalesce(lp.language_code,      '')                         as language_code,
-        coalesce(lp.language_name,      '')                         as language_name,
-        coalesce(lp.language_level,     '')                         as language_level,
-        coalesce(np.nationality_code,   '')                         as nationality_code,
-        coalesce(np.nationality_name,   '')                         as nationality_name,
+        coalesce(lp.language_code, cast([] as Array(String)))        as language_code,
+        coalesce(lp.language_name, cast([] as Array(String)))        as language_name,
+        coalesce(lp.language_level, cast([] as Array(String)))       as language_level,
+        coalesce(np.nationality_code, cast([] as Array(String)))     as nationality_code,
+        coalesce(np.nationality_name, cast([] as Array(String)))     as nationality_name,
         cust.registration_date                                      as registration_date,
         cust.creation_application                                   as creation_application,
         cust.is_deleted                                             as is_deleted,
@@ -78,9 +86,9 @@ source as (
             coalesce(toString(cust.civil_status_code),   ''), '|',
             coalesce(toString(cust.is_deleted),          ''), '|',
             coalesce(toString(cust.registration_date),   ''), '|',
-            coalesce(lp.language_code,                   ''), '|',
-            coalesce(lp.language_level,                  ''), '|',
-            coalesce(np.nationality_code,                '')
+            arrayStringConcat(arraySort(coalesce(lp.language_code,    cast([] as Array(String)))), ','), '|',
+            arrayStringConcat(arraySort(coalesce(lp.language_level,   cast([] as Array(String)))), ','), '|',
+            arrayStringConcat(arraySort(coalesce(np.nationality_code, cast([] as Array(String)))), ',')
         )) as _row_hash
     from customer cust
     left join languages_by_person lp     on cust.person_id = lp.person_id
@@ -207,11 +215,11 @@ select
     g.name                                                  as gender_name,
     cust.civil_status_code,
     if(cv.type = '', NULL, cv.civil_status_description)     as civil_status_description,
-    coalesce(lp.language_code,      '')                     as language_code,
-    coalesce(lp.language_name,      '')                     as language_name,
-    coalesce(lp.language_level,     '')                     as language_level,
-    coalesce(np.nationality_code,   '')                     as nationality_code,
-    coalesce(np.nationality_name,   '')                     as nationality_name,
+    coalesce(lp.language_code, cast([] as Array(String)))    as language_code,
+    coalesce(lp.language_name, cast([] as Array(String)))    as language_name,
+    coalesce(lp.language_level, cast([] as Array(String)))    as language_level,
+    coalesce(np.nationality_code, cast([] as Array(String)))  as nationality_code,
+    coalesce(np.nationality_name, cast([] as Array(String)))  as nationality_name,
     cust.registration_date,
     cust.creation_application,
     cust.is_deleted,
@@ -225,9 +233,9 @@ select
         coalesce(toString(cust.civil_status_code),   ''), '|',
         coalesce(toString(cust.is_deleted),          ''), '|',
         coalesce(toString(cust.registration_date),   ''), '|',
-        coalesce(lp.language_code,                   ''), '|',
-        coalesce(lp.language_level,                  ''), '|',
-        coalesce(np.nationality_code,                '')
+        arrayStringConcat(arraySort(coalesce(lp.language_code,    cast([] as Array(String)))), ','), '|',
+        arrayStringConcat(arraySort(coalesce(lp.language_level,   cast([] as Array(String)))), ','), '|',
+        arrayStringConcat(arraySort(coalesce(np.nationality_code, cast([] as Array(String)))), ',')
     )) as _row_hash,
     1                                   as is_current,
     now()                               as dbt_valid_from,

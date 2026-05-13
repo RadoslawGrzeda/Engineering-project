@@ -17,7 +17,7 @@
       'schema':   'gold_customer',
       'table':    'gold_client_dim_customer',
       'order_by': '(person_id, dbt_valid_from)',
-      'columns':  'person_id String, first_name Nullable(String), middle_name Nullable(String), last_name Nullable(String), birth_date Nullable(Date), passport_number Nullable(String), gender_code Nullable(String), gender_name Nullable(String), civil_status_code Nullable(String), civil_status_description Nullable(String), language_code Nullable(String), language_name Nullable(String), language_level Nullable(String), nationality_code Nullable(String), nationality_name Nullable(String), registration_date Nullable(DateTime), creation_application Nullable(String), is_deleted Nullable(UInt8)'
+      'columns':  'person_id String, first_name Nullable(String), middle_name Nullable(String), last_name Nullable(String), birth_date Nullable(Date), passport_number Nullable(String), gender_code Nullable(String), gender_name Nullable(String), civil_status_code Nullable(String), civil_status_description Nullable(String), language_code Array(String), language_name Array(String), language_level Array(String), nationality_code Array(String), nationality_name Array(String), registration_date Nullable(DateTime), creation_application Nullable(String), is_deleted Nullable(UInt8)'
     },
     {
       'schema':   'gold_customer',
