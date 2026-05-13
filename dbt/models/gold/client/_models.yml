@@ -1,123 +1,78 @@
 version: 2
 
 models:
-  - name: gold_dim_customer
-    description: "Wymiar klienta - dane osobowe; jezyki i narodowosci jako tablice struktur; pojedynczy profil digital access (najnowszy wiersz wg updated_at)."
+  - name: gold_client_dim_customer
+    description: "SCD2 — historia zmian danych klienta (dane osobowe, języki, narodowości)."
     columns:
       - name: person_id
-        description: "Identyfikator klienta z systemu zrodlowego."
+        description: "Identyfikator klienta."
         tests:
           - not_null
-          - unique
-      - name: gender_code
-        description: "Kod plci, FK do gold_dict_gender."
-      - name: civil_status_code
-        description: "Kod stanu cywilnego, FK do gold_dict_civil."
-      - name: languages
-        description: "Array(Tuple): language_code, language_name, language_level - wszystkie jezyki klienta."
-      - name: nationalities
-        description: "Array(Tuple): nationality_code, country_name - wszystkie narodowosci klienta."
-      - name: username
-        description: "Login portalu (aktualny rekord digital access)."
-      - name: email
-        description: "Email konta portalu (aktualny rekord digital access)."
-      - name: is_active
-        description: "Czy konto portalu jest aktywne (aktualny rekord digital access)."
-      - name: last_login_at
-        description: "Ostatnie logowanie (aktualny rekord digital access)."
-      - name: portal_user_confirmation_at
-        description: "Potwierdzenie uzytkownika portalu (aktualny rekord digital access)."
-      - name: correlation_id
-        description: "Identyfikator korelacyjny rekordu dla audytu i lineage."
 
-  - name: gold_dim_address
-    description: "Wymiar adresow klienta z denormalizacja kraju ze slownika."
+  - name: gold_client_dim_address
+    description: "SCD2 — historia zmian adresów klienta per typ adresu."
     columns:
-      - name: id
-        tests:
-          - not_null
-          - unique
       - name: person_id
+        description: "Identyfikator klienta."
         tests:
           - not_null
-          - relationships:
-              to: ref('gold_dim_customer')
-              field: person_id
-      - name: country_code
-        description: "Kod kraju, FK do gold_dict_country."
+      - name: address_type
+        description: "Typ adresu."
+        tests:
+          - not_null
 
-  - name: gold_dim_contact
-    description: "Wymiar kanalow kontaktu klienta (email, telefon, etc.) z denormalizacja typu kontaktu."
+  - name: gold_client_dim_contact
+    description: "SCD2 — historia zmian danych kontaktowych klienta per typ i wartość kontaktu."
     columns:
-      - name: id
-        tests:
-          - not_null
-          - unique
       - name: person_id
+        description: "Identyfikator klienta."
         tests:
           - not_null
-          - relationships:
-              to: ref('gold_dim_customer')
-              field: person_id
+      - name: contact_type
+        description: "Typ kontaktu (email, telefon itp.)."
+        tests:
+          - not_null
+      - name: contact_value
+        description: "Wartość kontaktu."
+        tests:
+          - not_null
 
-  - name: gold_fct_subscription
-    description: "Fakt subskrypcji komunikacyjnych klienta (email, sms, push)."
+  - name: gold_client_dim_digital_access
+    description: "SCD2 — historia zmian dostępu do portalu klienta."
     columns:
-      - name: id
-        tests:
-          - not_null
       - name: person_id
+        description: "Identyfikator klienta."
         tests:
           - not_null
-          - relationships:
-              to: ref('gold_dim_customer')
-              field: person_id
 
-  - name: gold_fct_loyalty
-    description: "Fakt statusow lojalnosciowych klienta w czasie - okresy obowiazywania danego statusu."
+  - name: gold_client_fct_loyalty
+    description: "SCD2 — historia zmian statusu programu lojalnościowego."
     columns:
-      - name: id
+      - name: identifier_id
+        description: "Identyfikator karty lojalnościowej."
         tests:
           - not_null
-      - name: person_id
-        tests:
-          - not_null
-          - relationships:
-              to: ref('gold_dim_customer')
-              field: person_id
 
-  - name: gold_fct_indicator
-    description: "Fakt wskaznikow biznesowych przypisanych do klienta - flagi typu VIP, churn risk itp."
+  - name: gold_client_fct_indicator
+    description: "SCD2 — historia zmian wskaźników klienta per typ wskaźnika."
     columns:
-      - name: id
-        tests:
-          - not_null
       - name: person_id
+        description: "Identyfikator klienta."
         tests:
           - not_null
-          - relationships:
-              to: ref('gold_dim_customer')
-              field: person_id
       - name: indicator_type
-        tests:
-          - relationships:
-              to: ref('gold_dict_indicator')
-              field: indicator_type
-
-  - name: gold_dict_indicator
-    description: "Slownik typow wskaznikow klienta z opisami PL/EN i regulami obliczeniowymi."
-    columns:
-      - name: indicator_type
+        description: "Typ wskaźnika."
         tests:
           - not_null
-          - unique
 
-  - name: gold_dwh_client_audit
-    description: "Tabela audytowa - rejestr wszystkich zmian rekordow klienta z korelacja do eventow zrodlowych."
+  - name: gold_client_fct_subscription
+    description: "SCD2 — historia zmian subskrypcji komunikacyjnych klienta."
     columns:
-      - name: id
-        tests:
-          - not_null
       - name: person_id
+        description: "Identyfikator klienta."
+        tests:
+          - not_null
+      - name: communication_code
+        description: "Kod kanału komunikacji."
         tests:
           - not_null

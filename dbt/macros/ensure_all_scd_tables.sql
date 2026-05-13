@@ -17,7 +17,7 @@
       'schema':   'gold_customer',
       'table':    'gold_client_dim_customer',
       'order_by': '(person_id, dbt_valid_from)',
-      'columns':  'person_id String, first_name Nullable(String), middle_name Nullable(String), last_name Nullable(String), birth_date Nullable(Date), passport_number Nullable(String), gender_code Nullable(String), gender_name Nullable(String), salutation Nullable(String), civil_status_code Nullable(String), civil_status_name Nullable(String), language_code Nullable(String), language_name Nullable(String), language_level Nullable(String), nationality_code Nullable(String), nationality_name Nullable(String), registration_date Nullable(DateTime), is_deleted Nullable(UInt8)'
+      'columns':  'person_id String, first_name Nullable(String), middle_name Nullable(String), last_name Nullable(String), birth_date Nullable(Date), passport_number Nullable(String), gender_code Nullable(String), gender_name Nullable(String), civil_status_code Nullable(String), civil_status_description Nullable(String), language_code Nullable(String), language_name Nullable(String), language_level Nullable(String), nationality_code Nullable(String), nationality_name Nullable(String), registration_date Nullable(DateTime), creation_application Nullable(String), is_deleted Nullable(UInt8)'
     },
     {
       'schema':   'gold_customer',
@@ -29,19 +29,19 @@
       'schema':   'gold_customer',
       'table':    'gold_client_fct_indicator',
       'order_by': '(person_id, indicator_type, dbt_valid_from)',
-      'columns':  'person_id String, indicator_type String, polish_name Nullable(String), english_name Nullable(String), is_active Nullable(UInt8)'
+      'columns':  'person_id String, indicator_type String, description Nullable(String), rules Nullable(String), is_active Nullable(UInt8)'
     },
     {
       'schema':   'gold_customer',
       'table':    'gold_client_fct_loyalty',
       'order_by': '(identifier_id, dbt_valid_from)',
-      'columns':  'identifier_id String, person_id String, status_code Nullable(String), status_name Nullable(String), status_rules Nullable(String), start_date Nullable(DateTime), end_date Nullable(DateTime), evaluation_at Nullable(DateTime)'
+      'columns':  'identifier_id String, person_id String, status_code Nullable(String), status_name Nullable(String), status_rules Nullable(String)'
     },
     {
       'schema':   'gold_customer',
       'table':    'gold_client_fct_subscription',
       'order_by': '(person_id, communication_code, dbt_valid_from)',
-      'columns':  'person_id String, communication_code String, communication_name Nullable(String), status Nullable(String), subscription_date Nullable(DateTime), unsubscription_date Nullable(DateTime), unsubscription_reason Nullable(String)'
+      'columns':  'person_id String, communication_code String, communication_name Nullable(String), active Nullable(UInt8), subscription_date Nullable(DateTime), unsubscription_date Nullable(DateTime), unsubscription_reason Nullable(String)'
     },
     {
       'schema':   'gold_product',
