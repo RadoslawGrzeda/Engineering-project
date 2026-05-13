@@ -61,8 +61,7 @@ changed as (
 new_entries as (
     select s.identifier_id
     from source s
-    left join current_in_target t on s.identifier_id = t.identifier_id
-    where t.identifier_id is null
+    where s.identifier_id not in (select identifier_id from current_in_target)
 ),
 
 closed_records as (

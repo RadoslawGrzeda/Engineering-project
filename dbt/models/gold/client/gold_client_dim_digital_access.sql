@@ -61,8 +61,7 @@ changed as (
 new_entries as (
     select s.person_id
     from source s
-    left join current_in_target t on s.person_id = t.person_id
-    where t.person_id is null
+    where s.person_id not in (select person_id from current_in_target)
 ),
 
 closed_records as (

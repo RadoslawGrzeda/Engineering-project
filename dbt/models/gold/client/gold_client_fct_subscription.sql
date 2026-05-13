@@ -70,9 +70,7 @@ changed as (
 new_entries as (
     select s.person_id, s.communication_code
     from source s
-    left join current_in_target t
-        on s.person_id = t.person_id and s.communication_code = t.communication_code
-    where t.person_id is null
+    where (s.person_id, s.communication_code) not in (select person_id, communication_code from current_in_target)
 ),
 
 closed_records as (

@@ -61,9 +61,7 @@ changed as (
 new_entries as (
     select s.person_id, s.indicator_type
     from source s
-    left join current_in_target t
-        on s.person_id = t.person_id and s.indicator_type = t.indicator_type
-    where t.person_id is null
+    where (s.person_id, s.indicator_type) not in (select person_id, indicator_type from current_in_target)
 ),
 
 closed_records as (

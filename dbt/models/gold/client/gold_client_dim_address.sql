@@ -26,15 +26,15 @@ dict_country as (
 ),
 source as (
     select
-        a.person_id,
-        a.address_type,
-        a.option_channel,
-        a.street,
-        a.zip_code,
-        a.city,
-        dc.name as country,
-        a.latitude,
-        a.longitude,
+        a.person_id                                 as person_id,
+        a.address_type                              as address_type,
+        a.option_channel                            as option_channel,
+        a.street                                    as street,
+        a.zip_code                                  as zip_code,
+        a.city                                      as city,
+        dc.name                                     as country,
+        ifNull(toFloat64(a.latitude),  0.0)         as latitude,
+        ifNull(toFloat64(a.longitude), 0.0)         as longitude,
         MD5(concat(
             coalesce(toString(a.option_channel), ''), '|',
             coalesce(toString(a.street),         ''), '|',
@@ -79,9 +79,7 @@ changed as (
 new_entries as (
     select s.person_id, s.address_type
     from source s
-    left join current_in_target t
-        on s.person_id = t.person_id and s.address_type = t.address_type
-    where t.person_id is null
+    where (s.person_id, s.address_type) not in (select person_id, address_type from current_in_target)
 ),
 
 closed_records as (

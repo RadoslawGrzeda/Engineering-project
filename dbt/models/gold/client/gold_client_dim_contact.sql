@@ -67,10 +67,7 @@ changed as (
 new_entries as (
     select s.person_id, s.contact_type
     from source s
-    left join current_in_target t
-        on  s.person_id     = t.person_id
-        and s.contact_type  = t.contact_type
-    where t.person_id is null
+    where (s.person_id, s.contact_type) not in (select person_id, contact_type from current_in_target)
 ),
 
 closed_records as (

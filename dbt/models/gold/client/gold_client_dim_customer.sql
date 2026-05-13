@@ -50,43 +50,43 @@ dict_civil as (
 ),
 source as (
     select
-        c.person_id,
-        c.first_name,
-        c.middle_name,
-        c.last_name,
-        c.birth_date,
-        c.passport_number,
-        c.gender_code,
+        cust.person_id                                              as person_id,
+        cust.first_name                                             as first_name,
+        cust.middle_name                                            as middle_name,
+        cust.last_name                                              as last_name,
+        cust.birth_date                                             as birth_date,
+        cust.passport_number                                        as passport_number,
+        cust.gender_code                                            as gender_code,
         g.name                                                      as gender_name,
-        c.civil_status_code,
+        cust.civil_status_code                                      as civil_status_code,
         if(cv.type = '', NULL, cv.civil_status_description)         as civil_status_description,
         coalesce(lp.language_code,      '')                         as language_code,
         coalesce(lp.language_name,      '')                         as language_name,
         coalesce(lp.language_level,     '')                         as language_level,
         coalesce(np.nationality_code,   '')                         as nationality_code,
         coalesce(np.nationality_name,   '')                         as nationality_name,
-        c.registration_date,
-        c.creation_application,
-        c.is_deleted,
+        cust.registration_date                                      as registration_date,
+        cust.creation_application                                   as creation_application,
+        cust.is_deleted                                             as is_deleted,
         MD5(concat(
-            coalesce(toString(c.first_name),          ''), '|',
-            coalesce(toString(c.middle_name),         ''), '|',
-            coalesce(toString(c.last_name),           ''), '|',
-            coalesce(toString(c.birth_date),          ''), '|',
-            coalesce(toString(c.passport_number),     ''), '|',
-            coalesce(toString(c.gender_code),         ''), '|',
-            coalesce(toString(c.civil_status_code),   ''), '|',
-            coalesce(toString(c.is_deleted),          ''), '|',
-            coalesce(toString(c.registration_date),   ''), '|',
-            coalesce(lp.language_code,                ''), '|',
-            coalesce(lp.language_level,               ''), '|',
-            coalesce(np.nationality_code,             '')
+            coalesce(toString(cust.first_name),          ''), '|',
+            coalesce(toString(cust.middle_name),         ''), '|',
+            coalesce(toString(cust.last_name),           ''), '|',
+            coalesce(toString(cust.birth_date),          ''), '|',
+            coalesce(toString(cust.passport_number),     ''), '|',
+            coalesce(toString(cust.gender_code),         ''), '|',
+            coalesce(toString(cust.civil_status_code),   ''), '|',
+            coalesce(toString(cust.is_deleted),          ''), '|',
+            coalesce(toString(cust.registration_date),   ''), '|',
+            coalesce(lp.language_code,                   ''), '|',
+            coalesce(lp.language_level,                  ''), '|',
+            coalesce(np.nationality_code,                '')
         )) as _row_hash
-    from customer c
-    left join languages_by_person lp     on c.person_id = lp.person_id
-    left join nationalities_by_person np on c.person_id = np.person_id
-    left join dict_gender g              on c.gender_code = g.code
-    left join dict_civil cv              on c.civil_status_code = cv.type
+    from customer cust
+    left join languages_by_person lp     on cust.person_id = lp.person_id
+    left join nationalities_by_person np on cust.person_id = np.person_id
+    left join dict_gender g              on cust.gender_code = g.code
+    left join dict_civil cv              on cust.civil_status_code = cv.type
 )
 
 {% if is_incremental() %}
@@ -94,25 +94,25 @@ source as (
 , current_in_target as (
     select
         person_id,
-        argMax(_row_hash,               dbt_valid_from) as _row_hash,
-        argMax(first_name,              dbt_valid_from) as first_name,
-        argMax(middle_name,             dbt_valid_from) as middle_name,
-        argMax(last_name,               dbt_valid_from) as last_name,
-        argMax(birth_date,              dbt_valid_from) as birth_date,
-        argMax(passport_number,         dbt_valid_from) as passport_number,
-        argMax(gender_code,             dbt_valid_from) as gender_code,
-        argMax(gender_name,             dbt_valid_from) as gender_name,
-        argMax(civil_status_code,       dbt_valid_from) as civil_status_code,
+        argMax(_row_hash,               dbt_valid_from)  as _row_hash,
+        argMax(first_name,              dbt_valid_from)  as first_name,
+        argMax(middle_name,             dbt_valid_from)  as middle_name,
+        argMax(last_name,               dbt_valid_from)  as last_name,
+        argMax(birth_date,              dbt_valid_from)  as birth_date,
+        argMax(passport_number,         dbt_valid_from)  as passport_number,
+        argMax(gender_code,             dbt_valid_from)  as gender_code,
+        argMax(gender_name,             dbt_valid_from)  as gender_name,
+        argMax(civil_status_code,       dbt_valid_from)  as civil_status_code,
         argMax(civil_status_description, dbt_valid_from) as civil_status_description,
-        argMax(language_code,           dbt_valid_from) as language_code,
-        argMax(language_name,           dbt_valid_from) as language_name,
-        argMax(language_level,          dbt_valid_from) as language_level,
-        argMax(nationality_code,        dbt_valid_from) as nationality_code,
-        argMax(nationality_name,        dbt_valid_from) as nationality_name,
-        argMax(registration_date,       dbt_valid_from) as registration_date,
-        argMax(creation_application,    dbt_valid_from) as creation_application,
-        argMax(is_deleted,              dbt_valid_from) as is_deleted,
-        max(dbt_valid_from)                             as current_dbt_valid_from
+        argMax(language_code,           dbt_valid_from)  as language_code,
+        argMax(language_name,           dbt_valid_from)  as language_name,
+        argMax(language_level,          dbt_valid_from)  as language_level,
+        argMax(nationality_code,        dbt_valid_from)  as nationality_code,
+        argMax(nationality_name,        dbt_valid_from)  as nationality_name,
+        argMax(registration_date,       dbt_valid_from)  as registration_date,
+        argMax(creation_application,    dbt_valid_from)  as creation_application,
+        argMax(is_deleted,              dbt_valid_from)  as is_deleted,
+        max(dbt_valid_from)                              as current_dbt_valid_from
     from {{ this }}
     where dbt_valid_to = toDateTime('2106-02-07 06:28:15')
     group by person_id
@@ -126,10 +126,9 @@ changed as (
 ),
 
 new_entries as (
-    select s.person_id
-    from source s
-    left join current_in_target t on s.person_id = t.person_id
-    where t.person_id is null
+    select sc.person_id
+    from source sc
+    where sc.person_id not in (select person_id from current_in_target)
 ),
 
 closed_records as (
@@ -198,46 +197,46 @@ select * from new_records
 {% else %}
 
 select
-    c.person_id,
-    c.first_name,
-    c.middle_name,
-    c.last_name,
-    c.birth_date,
-    c.passport_number,
-    c.gender_code,
+    cust.person_id,
+    cust.first_name,
+    cust.middle_name,
+    cust.last_name,
+    cust.birth_date,
+    cust.passport_number,
+    cust.gender_code,
     g.name                                                  as gender_name,
-    c.civil_status_code,
+    cust.civil_status_code,
     if(cv.type = '', NULL, cv.civil_status_description)     as civil_status_description,
     coalesce(lp.language_code,      '')                     as language_code,
     coalesce(lp.language_name,      '')                     as language_name,
     coalesce(lp.language_level,     '')                     as language_level,
     coalesce(np.nationality_code,   '')                     as nationality_code,
     coalesce(np.nationality_name,   '')                     as nationality_name,
-    c.registration_date,
-    c.creation_application,
-    c.is_deleted,
+    cust.registration_date,
+    cust.creation_application,
+    cust.is_deleted,
     MD5(concat(
-        coalesce(toString(c.first_name),          ''), '|',
-        coalesce(toString(c.middle_name),         ''), '|',
-        coalesce(toString(c.last_name),           ''), '|',
-        coalesce(toString(c.birth_date),          ''), '|',
-        coalesce(toString(c.passport_number),     ''), '|',
-        coalesce(toString(c.gender_code),         ''), '|',
-        coalesce(toString(c.civil_status_code),   ''), '|',
-        coalesce(toString(c.is_deleted),          ''), '|',
-        coalesce(toString(c.registration_date),   ''), '|',
-        coalesce(lp.language_code,                ''), '|',
-        coalesce(lp.language_level,               ''), '|',
-        coalesce(np.nationality_code,             '')
+        coalesce(toString(cust.first_name),          ''), '|',
+        coalesce(toString(cust.middle_name),         ''), '|',
+        coalesce(toString(cust.last_name),           ''), '|',
+        coalesce(toString(cust.birth_date),          ''), '|',
+        coalesce(toString(cust.passport_number),     ''), '|',
+        coalesce(toString(cust.gender_code),         ''), '|',
+        coalesce(toString(cust.civil_status_code),   ''), '|',
+        coalesce(toString(cust.is_deleted),          ''), '|',
+        coalesce(toString(cust.registration_date),   ''), '|',
+        coalesce(lp.language_code,                   ''), '|',
+        coalesce(lp.language_level,                  ''), '|',
+        coalesce(np.nationality_code,                '')
     )) as _row_hash,
     1                                   as is_current,
     now()                               as dbt_valid_from,
     toDateTime('2106-02-07 06:28:15')   as dbt_valid_to,
     now()                               as dbt_updated_at
-from customer c
-left join languages_by_person lp     on c.person_id = lp.person_id
-left join nationalities_by_person np on c.person_id = np.person_id
-left join dict_gender g              on c.gender_code = g.code
-left join dict_civil cv              on c.civil_status_code = cv.type
+from customer cust
+left join languages_by_person lp     on cust.person_id = lp.person_id
+left join nationalities_by_person np on cust.person_id = np.person_id
+left join dict_gender g              on cust.gender_code = g.code
+left join dict_civil cv              on cust.civil_status_code = cv.type
 
 {% endif %}

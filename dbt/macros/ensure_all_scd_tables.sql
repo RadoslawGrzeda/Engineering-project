@@ -5,13 +5,13 @@
       'schema':   'gold_customer',
       'table':    'gold_client_dim_address',
       'order_by': '(person_id, address_type, dbt_valid_from)',
-      'columns':  'person_id String, address_type String, option_channel Nullable(String), street Nullable(String), zip_code Nullable(String), city Nullable(String), country Nullable(String), latitude Nullable(Float64), longitude Nullable(Float64)'
+      'columns':  'person_id String, address_type String, option_channel Nullable(UInt8), street Nullable(String), zip_code Nullable(String), city Nullable(String), country Nullable(String), latitude Nullable(Float64), longitude Nullable(Float64)'
     },
     {
       'schema':   'gold_customer',
       'table':    'gold_client_dim_contact',
       'order_by': '(person_id, contact_type, dbt_valid_from)',
-      'columns':  'person_id String, contact_type String, contact_value Nullable(String), flag_main_type Nullable(UInt8), preferred_channel Nullable(String), option_channel Nullable(String), flag_valid Nullable(UInt8)'
+      'columns':  'person_id String, contact_type String, contact_value Nullable(String), flag_main_type Nullable(UInt8), preferred_channel Nullable(UInt8), option_channel Nullable(UInt8), flag_valid Nullable(UInt8)'
     },
     {
       'schema':   'gold_customer',
