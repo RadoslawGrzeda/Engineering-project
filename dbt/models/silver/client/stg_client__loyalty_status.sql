@@ -3,13 +3,10 @@ with source_data as (
 )
 ,renamed as (
     select
-        identifier_id,  
+        identifier_id,
         person_id,
         status_code as status,
-        start_date as start_at,
-        end_date as end_at,
-        evaluation_date as evaluation_at,
-        last_ingested_at as updated_at,
+        updated_at,
         correlation_id as correlation_id
     from source_data
 )

@@ -6,8 +6,7 @@ select
     person_id,
     type as indicator,
     is_active = 1 as is_active,
-    inserted_at as registration_at,
-    last_ingested_at as updated_at,
+    updated_at,
     correlation_id as correlation_id
 from source_data
 )

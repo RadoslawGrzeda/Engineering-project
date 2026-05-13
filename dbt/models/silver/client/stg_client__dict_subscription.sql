@@ -5,7 +5,8 @@ with source_data as (
     select  
         communication_code as code,
         communication_name as name,
-        communication_description as description
+        communication_description as description,
+        updated_at
     from source_data
 )
 

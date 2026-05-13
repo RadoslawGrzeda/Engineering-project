@@ -8,7 +8,9 @@ renamed as (
     select 
         person_id,
         country_code as code,
-        last_ingested_at as updated_at
+        updated_at,
+        correlation_id,
+        correlation_id
     from source_data
 )
 

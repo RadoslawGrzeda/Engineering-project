@@ -5,11 +5,11 @@ renamed as (
     select 
         person_id,
         communication_code,
-        CASE WHEN value = 'AIV_01' THEN 1 WHEN value='AIV_02' THEN 0 ELSE 3 END as status,
+        case when value = 'AIV_01' then 1 else 0 end as active,
         date_of_subscription as subscription_date,
         date_of_unsubscription as unsubscription_date,
         reason_of_unsubscription as unsubscription_reason,
-        last_ingested_at as updated_at,
+        updated_at,
         correlation_id as correlation_id
     from source_data
 )

@@ -13,7 +13,9 @@ with source_data as (
         civil_status_code,
         is_deleted = 1 as is_deleted,
         registration_date,
-        last_ingested_at as updated_at,
+        creation_application,
+        event_time,
+        updated_at,
         correlation_id as correlation_id
     from source_data
 )

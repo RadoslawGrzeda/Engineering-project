@@ -12,7 +12,7 @@ with source_data as (
         country_code as country,
         nullif(geo_coordinates_x_value, 0) as latitude,
         nullif(geo_coordinates_y_value, 0) as longitude,
-        last_ingested_at as updated_at,
+        updated_at,
         correlation_id
     from source_data
 )

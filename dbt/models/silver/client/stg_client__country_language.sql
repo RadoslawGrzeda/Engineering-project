@@ -4,7 +4,8 @@ with source_data as (
 ,renamed as (
     select 
         country_code as code,
-        language_code as language_code
+        language_code as language_code,
+        updated_at
     from source_data
 )
 select * from renamed

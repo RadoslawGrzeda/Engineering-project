@@ -10,7 +10,7 @@ renamed as (
         preferred_channel = 1 as preferred_channel,
         option_channel = 1 as option_channel,
         flag_valid = 1 as valid,
-        last_ingested_at as updated_at,
+        updated_at,
         correlation_id as correlation_id
     from source_data
 )

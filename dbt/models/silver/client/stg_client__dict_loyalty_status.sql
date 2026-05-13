@@ -5,7 +5,8 @@ with source_data as (
     select 
         status_code as code,
         status_name as name,
-        status_rules  as rules
+        status_rules as rules,
+        updated_at
     from source_data
 )
 select * from renamed

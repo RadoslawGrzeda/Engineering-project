@@ -5,7 +5,7 @@ with source_data as (
     select 
         gender_code as code,
         gender_name as name,
-        salutation as salutation
+        updated_at
     from source_data
 )
 select * from renamed

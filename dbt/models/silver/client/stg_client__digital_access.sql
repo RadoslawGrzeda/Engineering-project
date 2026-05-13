@@ -7,9 +7,9 @@ with source_data as (
         username,
         email_user as email, 
         is_active = 1 as is_active,
-        last_login_date as last_login_at,
-        portal_user_confirmation_date as portal_user_confirmation_at,
-        last_ingested_at as updated_at,
+        last_login_at,
+        portal_user_confirmation_at,
+        updated_at,
         correlation_id as correlation_id
     from source_data
 )

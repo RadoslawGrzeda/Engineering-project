@@ -6,7 +6,8 @@ select * from {{ source('bronze', 'client__dict_language') }}
         language_code as code,
         language_name as name,
         language_min_level_code as min_level_code,
-        language_max_level_code as max_level_code
+        language_max_level_code as max_level_code,
+        updated_at
     from source_data
 )
 select * from renamed
