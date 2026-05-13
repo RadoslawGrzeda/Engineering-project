@@ -1,23 +1,40 @@
 defaults:
-  order_by: tuple()
-  engine: MergeTree
+  engine: ReplacingMergeTree(updated_at)
 
 tables:
-  - source: client.address
-  - source: client.communication_subscription
-  - source: client.contact
-  - source: client.country_language
-  - source: client.customer
-  - source: client.customer_indicator
-  - source: client.dict_civil
-  - source: client.dict_contact
-  - source: client.dict_country
   - source: client.dict_gender
-  - source: client.dict_indicator
+    order_by: gender_code
+  - source: client.dict_country
+    order_by: country_code
   - source: client.dict_language
+    order_by: language_code
   - source: client.dict_loyalty_status
+    order_by: status_code
+  - source: client.dict_indicator
+    order_by: indicator_type
+  - source: client.dict_civil
+    order_by: civil_status_type
+  - source: client.dict_contact
+    order_by: contact_type
   - source: client.dict_subscription
-  - source: client.digital_access
-  - source: client.language
+    order_by: communication_code
+  - source: client.customer
+    order_by: person_id
   - source: client.loyalty_status
+    order_by: identifier_id
+  - source: client.address
+    order_by: (person_id, address_type)
+  - source: client.contact
+    order_by: (person_id, contact_type)
+  - source: client.communication_subscription
+    order_by: (person_id, communication_code)
+  - source: client.language
+    order_by: (person_id, language_code)
   - source: client.nationality
+    order_by: (person_id, country_code)
+  - source: client.customer_indicator
+    order_by: (person_id, type)
+  - source: client.digital_access
+    order_by: person_id
+  - source: client.country_language
+    order_by: (country_code, language_code)
