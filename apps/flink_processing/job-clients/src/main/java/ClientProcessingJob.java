@@ -1,6 +1,6 @@
 import config.DeadLetter;
 import config.FlinkJdbcConfig;
-import config.GetGeoAddress;
+//import config.GetGeoAddress;
 import config.SinkValidator;
 import deserializer.ClientDeserializer;
 import dto.Client;
@@ -10,6 +10,9 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.connector.jdbc.JdbcSink;
+//import org.apache.flink.connector.kafka.sink.DeliveryGuarantee;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
@@ -52,13 +55,13 @@ public class ClientProcessingJob {
     private static final String BOOTSTRAP_SERVERS = Objects.requireNonNull(PROPERTIES.getProperty("BOOTSTRAP_SERVERS"), "BOOTSTRAP_SERVERS property is required");
     private static final String SERVICE_NAME = Objects.requireNonNull(PROPERTIES.getProperty("SERVICE_NAME"), "SERVICE_NAME property is required");
     private static final String CHECKPOINT_PATH = Objects.requireNonNull(PROPERTIES.getProperty("CHECKPOINT_PATH"), "CHECKPOINT_PATH property is required");
+    private static final String TOPIC_ADDRESS_PERSISTED = Objects.requireNonNull(PROPERTIES.getProperty("TOPIC_ADDRESS_PERSISTED"), "TOPIC_ADDRESS_PERSISTED property is required");
 
     public static void main(String[] args) throws Exception {
 
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
-        // ── Checkpointing: exactly-once, co 30s ──
         env.enableCheckpointing(30_000);
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
         env.getCheckpointConfig().setCheckpointTimeout(60_000);
@@ -77,6 +80,7 @@ public class ClientProcessingJob {
                 .setProperty("enable.auto.commit", "false")
                 .setValueOnlyDeserializer(new ClientDeserializer())
                 .build();
+
         KafkaSource<Client> retryStream = KafkaSource.<Client>builder()
                 .setBootstrapServers(BOOTSTRAP_SERVERS)
                 .setTopics(TOPIC_RETRY)
@@ -98,7 +102,6 @@ public class ClientProcessingJob {
 
         DataStream<Client> clientStream = mainDataSteam.union(retryDataSteam);
 
-        // - Main Validation Stream
         SingleOutputStreamOperator<Client> validClientStream = clientStream
                 .process(new ClientValidatorRequiredFields())
                 .name("Validate required fields");
@@ -114,14 +117,12 @@ public class ClientProcessingJob {
                 .addSink(deadLetterSink)
                 .name("Dead Letter Sink (required)");
 
-        //  - Account Validation Stream
         SingleOutputStreamOperator<Client> accountResult = validClientStream.process(new AccountSink()).name("Customer Sink");
 
         accountResult.getSideOutput(AccountSink.DEAD_LETTER)
                 .addSink(deadLetterSink)
                 .name("Dead Letter Sink (account)");
 
-        // ── Language ──
         DataStream<Client.Language> languageStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client.Language> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -144,7 +145,6 @@ public class ClientProcessingJob {
         SingleOutputStreamOperator<Client.Language> languageResult = languageStream.process(new LanguageSink()).name("Language Sink");
         languageResult.getSideOutput(LanguageSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (language)");
 
-        // ── Nationality ──
         DataStream<Client.Nationality> nationalityStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client.Nationality> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -175,7 +175,6 @@ public class ClientProcessingJob {
 
         nationalityResult.getSideOutput(CountriesSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (nationality)");
 
-        // ── Address ──
         DataStream<Client.AddressChannel> addressStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client.AddressChannel> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -194,20 +193,21 @@ public class ClientProcessingJob {
                         MDC.clear();
                     }
                 }).returns(Client.AddressChannel.class);
-        DataStream<Client.AddressChannel> addressWithGeo= addressStream.map(new GetGeoAddress()).name("Get Geo Address");
 
-        SingleOutputStreamOperator<Client.AddressChannel> validAddresses = addressWithGeo
-                .process(new AddressValidator())
-                .name("Validate address");
-
-        validAddresses.getSideOutput(SinkValidator.DEAD_LETTER_TAG)
-                .addSink(deadLetterSink).name("Dead Letter Sink (address)");
-
-        SingleOutputStreamOperator<Client.AddressChannel> addressResult = validAddresses.process(new AddressChannelSink()).name("Address Sink");
+        SingleOutputStreamOperator<Client.AddressChannel> addressResult = addressStream.process(new AddressChannelSink()).name("Address Sink");
 
         addressResult.getSideOutput(AddressChannelSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (address)");
 
-        // ── Contact ──
+        KafkaSink<Client.AddressChannel> addressGeocodingKafkaSink = KafkaSink.<Client.AddressChannel>builder()
+                .setBootstrapServers(BOOTSTRAP_SERVERS)
+                .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+                        .setTopic(TOPIC_ADDRESS_PERSISTED)
+                        .setValueSerializationSchema(new deserializer.AddressChannelSerializer())
+                        .build())
+                .build();
+
+        addressResult.sinkTo(addressGeocodingKafkaSink).name("Address Geocoding Kafka Sink");
+
         DataStream<Client.ContactChannel> contactStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client.ContactChannel> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -238,7 +238,6 @@ public class ClientProcessingJob {
 
         contactResult.getSideOutput(ContactChannelSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (contact)");
 
-        // ── Communication Subscription ──
         DataStream<Client.CommunicationSubscription> commStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client.CommunicationSubscription> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -268,7 +267,6 @@ public class ClientProcessingJob {
         SingleOutputStreamOperator<Client.CommunicationSubscription> validCommsResult=validComms.process(new CommunicationSubscriptionSink()).name("Communication Subscription Sink");
         validCommsResult.getSideOutput(CommunicationSubscriptionSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (communication subscription)");
 
-        // ── Digital Access ──
         SingleOutputStreamOperator<Client> digitalAccessStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -291,7 +289,6 @@ public class ClientProcessingJob {
 
         SingleOutputStreamOperator<Client> digiResult=digitalAccessStream.process(new DigitalAccessSink()).name("Digital Access Sink");
         digiResult.getSideOutput(DigitalAccessSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (digital access)");
-        // ── Loyalty Status ──
         SingleOutputStreamOperator<Client> loyaltyStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -313,31 +310,7 @@ public class ClientProcessingJob {
         SingleOutputStreamOperator<Client> loyResult = loyaltyStream.process(new LoyaltyStatusSink()).name("Loyalty Status Sink");
         loyResult.getSideOutput(LoyaltyStatusSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (loyalty)");
 
-        //        // ── Civil Status ──
-//        SingleOutputStreamOperator<Client> civilStream = validClientStream.flatMap(
-//                (Client client, org.apache.flink.util.Collector<Client> collector) -> {
-//                    MDC.put("service", SERVICE_NAME);
-//                    MDC.put("correlation_id", client.getAccount() != null ? client.getAccount().getCorrelation_id() : "-");
-//                    try {
-//                        if (client.getAccount().getCivilStatus() != null) {
-//                            collector.collect(client);
-//                        }
-//                    } catch (Exception e) {
-//                        LOG.warn("Skipping civil status for client {}: {}", client.getPersonId(), e.getMessage());
-//                    } finally {
-//                        MDC.clear();
-//                    }
-//                }).returns(Client.class)
-//                .process(new CivilValidator())
-//                .name("Validate civil status");
-//
-//        civilStream.getSideOutput(SinkValidator.DEAD_LETTER_TAG)
-//                .addSink(deadLetterSink).name("Dead Letter Sink (civil)");
-//
-//        SingleOutputStreamOperator<Client> civilResult = civilStream.process(new CivilSink()).name("Civil Sink");
-//        civilResult.getSideOutput(CivilSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (civil)");
 
-        // ── Customer Indicator ──
         SingleOutputStreamOperator<Client> indicatorStream = validClientStream.flatMap(
                 (Client client, org.apache.flink.util.Collector<Client> collector) -> {
                     MDC.put("service", SERVICE_NAME);
@@ -358,8 +331,6 @@ public class ClientProcessingJob {
                 .addSink(deadLetterSink).name("Dead Letter Sink (indicator)");
         SingleOutputStreamOperator<Client> indResult = indicatorStream.process(new CustomerIndicatorSink()).name("Customer Indicator Sink");
         indResult.getSideOutput(CustomerIndicatorSink.DEAD_LETTER).addSink(deadLetterSink).name("Dead Letter Sink (indicator)");
-
-//        validClientStream.print();
 
         env.execute("Client Processing Job");
     }
