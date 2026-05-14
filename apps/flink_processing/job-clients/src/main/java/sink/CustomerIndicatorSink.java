@@ -9,16 +9,13 @@ import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.util.OutputTag;
 
 import java.sql.PreparedStatement;
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
 
 public class CustomerIndicatorSink extends JdbcProcessSink<Client> {
     public  static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("customer_indicator_dead_letter", TypeInformation.of(DeadLetter.class));
-    public static final String SQL = "INSERT INTO client.customer_indicator (person_id, type, is_active, created_at, updated_at, correlation_id)" +
-                                    " VALUES (?, ?, ?, ?, ?, ?)" +
+    public static final String SQL = "INSERT INTO client.customer_indicator (person_id, type, is_active, correlation_id)" +
+                                    " VALUES (?, ?, ?, ?)" +
                                     " ON CONFLICT (person_id, type) DO UPDATE SET" +
                                     " is_active = EXCLUDED.is_active," +
-                                    " updated_at = EXCLUDED.updated_at," +
                                     " correlation_id = EXCLUDED.correlation_id";
 
     @Override
@@ -31,15 +28,13 @@ public class CustomerIndicatorSink extends JdbcProcessSink<Client> {
         return (PreparedStatement preparedStatement, Client client) -> {
             Client.AccountIndicator indicator = client.getAccountIndicators();
             preparedStatement.setString(1, client.getPersonId());
-            preparedStatement.setString(2, indicator.getTypeAccountIndicator());
-            if (indicator.getIsDeleted() != null) {
-                preparedStatement.setBoolean(3, !indicator.getIsDeleted());
+            preparedStatement.setString(2, indicator.getType());
+            if (indicator.getIsActive() != null) {
+                preparedStatement.setBoolean(3, indicator.getIsActive());
             } else {
                 preparedStatement.setBoolean(3, true);
             }
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setTimestamp(5, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(6, client.getAccount().getCorrelation_id());
+            preparedStatement.setString(4, client.getAccount().getCorrelation_id());
         };
     }
 
@@ -68,8 +63,4 @@ public class CustomerIndicatorSink extends JdbcProcessSink<Client> {
         return DEAD_LETTER;
     }
 
-    @Override
-    protected Client getRawPayload(Client element) {
-        return element;
-    }
 }

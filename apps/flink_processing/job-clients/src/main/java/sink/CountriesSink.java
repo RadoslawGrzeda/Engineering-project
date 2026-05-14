@@ -9,12 +9,10 @@ import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.util.OutputTag;
 
 import java.sql.PreparedStatement;
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
 
 public class  CountriesSink extends JdbcProcessSink<Client.Nationality> {
     public static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("countries_dead_letter", TypeInformation.of(DeadLetter.class));
-    public static final String SQL = "INSERT INTO client.nationality (person_id, country_code, created_at, correlation_id) VALUES (?, ?, ?, ?)" +
+    public static final String SQL = "INSERT INTO client.nationality (person_id, country_code, correlation_id) VALUES (?, ?, ?)" +
                                     " ON CONFLICT (person_id, country_code) DO UPDATE SET" +
                                     " correlation_id = EXCLUDED.correlation_id";
 
@@ -28,8 +26,7 @@ public class  CountriesSink extends JdbcProcessSink<Client.Nationality> {
         return (PreparedStatement preparedStatement, Client.Nationality nationality) -> {
             preparedStatement.setString(1, nationality.getPersonId());
             preparedStatement.setString(2, nationality.getCountryCode());
-            preparedStatement.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(4, nationality.getCorrelation_id());
+            preparedStatement.setString(3, nationality.getCorrelation_id());
         };
     }
 
@@ -58,8 +55,4 @@ public class  CountriesSink extends JdbcProcessSink<Client.Nationality> {
         return DEAD_LETTER;
     }
 
-    @Override
-    protected Client getRawPayload(Client.Nationality element) {
-        return element.getClient();
-    }
 }

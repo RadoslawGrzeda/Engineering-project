@@ -9,15 +9,18 @@ import org.apache.flink.util.OutputTag;
 
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 
 public class AccountSink extends JdbcProcessSink<Client> {
 
     public static final OutputTag<DeadLetter> DEAD_LETTER = new OutputTag<>("account_dead_letter", TypeInformation.of(DeadLetter.class));
     public static final String SQL = "INSERT INTO client.customer (" +
                                     "person_id, first_name, middle_name, last_name, birth_date, passport_number, gender_code, civil_status_code," +
-                                    "registration_date, creation_application, created_at, updated_at, correlation_id)" +
-                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" +
+                                    "registration_date, creation_application, correlation_id, event_time)" +
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" +
                                     " ON CONFLICT (person_id) DO UPDATE SET" +
                                     " first_name = EXCLUDED.first_name," +
                                     " middle_name = EXCLUDED.middle_name," +
@@ -26,23 +29,10 @@ public class AccountSink extends JdbcProcessSink<Client> {
                                     " passport_number = EXCLUDED.passport_number," +
                                     " gender_code = EXCLUDED.gender_code," +
                                     " civil_status_code = EXCLUDED.civil_status_code," +
-                                    " updated_at = EXCLUDED.updated_at," +
-                                    " correlation_id = EXCLUDED.correlation_id";
+                                    " correlation_id = EXCLUDED.correlation_id," +
+                                    " event_time = EXCLUDED.event_time";
 
-//    public void accept(PreparedStatement statement, Client client) throws SQLException {
-//        statement.setString(1, client.getPersonId());
-//        statement.setString(2, client.getAccount().getFirstName());
-//        statement.setString(3, client.getAccount().getMiddleName());
-//        statement.setString(4, client.getAccount().getLastName());
-//        statement.setDate(5, client.getAccount().getBirthDate());
-//        statement.setString(6, client.getAccount().getPassportNumber() == null ? null : client.getAccount().getPassportNumber().toUpperCase());
-//        statement.setString(7, client.getAccount().getGenderCode());
-//        statement.setDate(8, client.getAccount().getRegistrationDate());
-//        statement.setString(9, client.getAccount().getCreationApplication());
-//        statement.setTimestamp(10, Timestamp.valueOf(LocalDateTime.now()));
-//        statement.setTimestamp(11, Timestamp.valueOf(LocalDateTime.now()));
-//        statement.setString(12, client.getAccount().getCorrelation_id());
-//    }
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Override
     protected String getSQL() {
@@ -59,13 +49,30 @@ public class AccountSink extends JdbcProcessSink<Client> {
             statement.setDate(5, client.getAccount().getBirthDate());
             statement.setString(6, client.getAccount().getPassportNumber() == null ? null : client.getAccount().getPassportNumber().toUpperCase());
             statement.setString(7, client.getAccount().getGenderCode());
-            statement.setString(8, client.getAccount().getCivilStatus());
-            statement.setTimestamp(9, Timestamp.valueOf(client.getAccount().getRegistrationDate()));
+            statement.setString(8, client.getAccount().getCivilStatusCode());
+            String registrationDate = client.getAccount().getRegistrationDate();
+            if (registrationDate != null) {
+                statement.setTimestamp(9, Timestamp.valueOf(LocalDateTime.parse(registrationDate, TIMESTAMP_FORMAT)));
+            } else {
+                statement.setNull(9, java.sql.Types.TIMESTAMP);
+            }
             statement.setString(10, client.getAccount().getCreationApplication());
-            statement.setTimestamp(11, Timestamp.valueOf(LocalDateTime.now()));
-            statement.setTimestamp(12, Timestamp.valueOf(LocalDateTime.now()));
-            statement.setString(13, client.getAccount().getCorrelation_id());
+            statement.setString(11, client.getAccount().getCorrelation_id());
+            String rawEventTime = client.getEventTimestamp();
+            if (rawEventTime != null) {
+                statement.setTimestamp(12, Timestamp.from(parseEventTimestamp(rawEventTime)));
+            } else {
+                statement.setNull(12, java.sql.Types.TIMESTAMP);
+            }
         };
+    }
+
+    private static Instant parseEventTimestamp(String raw) {
+        try {
+            return Instant.parse(raw);
+        } catch (Exception e) {
+            return OffsetDateTime.parse(raw).toInstant();
+        }
     }
 
     @Override
@@ -76,11 +83,6 @@ public class AccountSink extends JdbcProcessSink<Client> {
     @Override
     protected String getCorrelation_id(Client client) {
         return client.getAccount().getCorrelation_id();
-    }
-
-    @Override
-    protected Client getRawPayload(Client element) {
-        return element;
     }
 
     @Override
@@ -98,40 +100,3 @@ public class AccountSink extends JdbcProcessSink<Client> {
         return DEAD_LETTER;
     }
 }
-//package sink; import dto.Client;
-//
-//
-//
-//
-//import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
-//
-//import java.sql.Date;
-//import java.sql.PreparedStatement;
-//import java.sql.SQLException;
-//import java.sql.Timestamp;
-//import java.time.LocalDate;
-//import java.time.LocalDateTime;
-//
-//public class AccountSink implements JdbcStatementBuilder<Client> {
-//
-//    public static final String SQL = "INSERT INTO client.customer (" +
-//            "person_id, first_name, middle_name, last_name, birth_date, passport_number, gender_code," +
-//            "registration_date, creation_application, created_at, updated_at, correlation_id)" +
-//            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-//
-//    public void accept(PreparedStatement statement, Client client) throws SQLException {
-//        statement.setString(1, client.getPersonId());
-//        statement.setString(2, client.getAccount().getFirstName());
-//        statement.setString(3, client.getAccount().getMiddleName());
-//        statement.setString(4, client.getAccount().getLastName());
-//        statement.setDate(5, client.getAccount().getBirthDate());
-//        statement.setString(6, client.getAccount().getPassportNumber() == null ? null : client.getAccount().getPassportNumber().toUpperCase());
-//        statement.setString(7, client.getAccount().getGenderCode());
-//        statement.setDate(8, client.getAccount().getRegistrationDate());
-//        statement.setString(9, client.getAccount().getCreationApplication());
-//        statement.setTimestamp(10, Timestamp.valueOf(LocalDateTime.now()));
-//        statement.setTimestamp(11, Timestamp.valueOf(LocalDateTime.now()));
-//        statement.setString(12, client.getAccount().getCorrelation_id());
-//    }
-//
-//}
