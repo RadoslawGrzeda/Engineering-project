@@ -23,16 +23,11 @@ public class AddressValidator extends SinkValidator<Client.AddressChannel> {
     );
 
     @Override
-    protected Client getRawPayload(Client.AddressChannel element) {
-        return element.getClient();
-    }
-
-    @Override
     protected List<String> validate(Client.AddressChannel addr) {
         List<String> errors = new ArrayList<>();
 
-        if (!isBlank(addr.getAddressCode())) {
-            String code = addr.getAddressCode().toUpperCase();
+        if (!isBlank(addr.getCountryCode())) {
+            String code = addr.getCountryCode().toUpperCase();
             if (!VALID_COUNTRY_CODES.contains(code)) {
                 errors.add("country_code invalid: " + code);
             } else if (!isBlank(addr.getAddressZipCode())) {
@@ -43,7 +38,7 @@ public class AddressValidator extends SinkValidator<Client.AddressChannel> {
             }
         }
 
-        if (!isBlank(addr.getAddressAddress()) && isBlank(addr.getAddressCity())) {
+        if (!isBlank(addr.getAddressStreet()) && isBlank(addr.getAddressCity())) {
             errors.add("street provided but city is missing");
         }
 

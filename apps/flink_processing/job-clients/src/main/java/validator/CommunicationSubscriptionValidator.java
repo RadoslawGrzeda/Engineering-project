@@ -9,16 +9,12 @@ import java.util.List;
 
 public class CommunicationSubscriptionValidator extends SinkValidator<Client.CommunicationSubscription> {
 
-    @Override
-    protected Client getRawPayload(Client.CommunicationSubscription element) {
-        return element.getClient();
-    }
 
     @Override
     protected List<String> validate(Client.CommunicationSubscription comm) {
         List<String> errors = new ArrayList<>();
 
-        if (isBlank(comm.getCommunityCode())) {
+        if (isBlank(comm.getCommunicationCode())) {
             errors.add("communication_code is missing");
         }
 

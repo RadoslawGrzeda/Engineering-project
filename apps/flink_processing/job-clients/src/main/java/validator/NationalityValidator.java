@@ -11,10 +11,6 @@ public class NationalityValidator extends SinkValidator<Client.Nationality> {
     private static final List<String> VALID_COUNTRY_CODES =
             List.of("PL", "DE", "CZ", "SK", "UA", "LT");
 
-    @Override
-    protected Client getRawPayload(Client.Nationality element) {
-        return element.getClient();
-    }
 
     @Override
     protected List<String> validate(Client.Nationality nat) {

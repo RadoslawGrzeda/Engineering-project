@@ -12,10 +12,6 @@ public class DigitalAccessValidator extends SinkValidator<Client> {
     private static final Pattern EMAIL_PATTERN =
             Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
-    @Override
-    protected Client getRawPayload(Client element) {
-        return element;
-    }
 
     @Override
     protected List<String> validate(Client client) {
@@ -26,12 +22,12 @@ public class DigitalAccessValidator extends SinkValidator<Client> {
             errors.add("email_user invalid format: " + da.getEmailUser());
         }
 
-        if (!isBlank(da.getLastLoginDate()) && parseDate(da.getLastLoginDate()) == null) {
-            errors.add("last_login_date invalid format: " + da.getLastLoginDate());
+        if (!isBlank(da.getLastLoginAt()) && parseDate(da.getLastLoginAt()) == null) {
+            errors.add("last_login_date invalid format: " + da.getLastLoginAt());
         }
 
-        if (!isBlank(da.getPortalUserConfirmationDate()) && parseDate(da.getPortalUserConfirmationDate()) == null) {
-            errors.add("portal_user_confirmation_date invalid format: " + da.getPortalUserConfirmationDate());
+        if (!isBlank(da.getPortalUserConfirmationAt()) && parseDate(da.getPortalUserConfirmationAt()) == null) {
+            errors.add("portal_user_confirmation_date invalid format: " + da.getPortalUserConfirmationAt());
         }
 
         return errors;

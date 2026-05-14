@@ -73,7 +73,6 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
         return validate(client).isEmpty();
     }
 
-
     private static void validateAccount(Client.Account acc, List<String> errors) {
         if (isBlank(acc.getPersonId())) {
             errors.add("person_id is missing");
@@ -112,9 +111,9 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
             errors.add("gender_code invalid: " + acc.getGenderCode());
         }
 
-        if (isBlank(acc.getRegistrationDate().toString())) {
+        if (isBlank(acc.getRegistrationDate())) {
             errors.add("registration_date is missing");
-        } else if (parseDate(acc.getRegistrationDate().toString()) == null) {
+        } else if (parseDate(acc.getRegistrationDate()) == null) {
             errors.add("registration_date invalid format: " + acc.getRegistrationDate());
         }
 
@@ -125,31 +124,17 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
         }
     }
 
-
     private static void validateLoyalty(Client.Loyalty loyalty, List<String> errors) {
         if (loyalty == null) {
             errors.add("loyalty is null");
             return;
         }
-        if (isBlank(loyalty.getLoyaltyStatus())) {
-            errors.add("loyalty_status is missing");
-        } else if (!VALID_LOYALTY_STATUSES.contains(loyalty.getLoyaltyStatus())) {
-            errors.add("loyalty_status invalid: " + loyalty.getLoyaltyStatus());
-        }
-
-        LocalDate start = parseDate(loyalty.getStartDate());
-        LocalDate end = parseDate(loyalty.getEndDate());
-        if (start == null) {
-            errors.add("loyalty start_date invalid");
-        }
-        if (end == null) {
-            errors.add("loyalty end_date invalid");
-        }
-        if (start != null && end != null && end.isBefore(start)) {
-            errors.add("loyalty end_date before start_date");
+        if (isBlank(loyalty.getStatusCode())) {
+            errors.add("status_code is missing");
+        } else if (!VALID_LOYALTY_STATUSES.contains(loyalty.getStatusCode())) {
+            errors.add("status_code invalid: " + loyalty.getStatusCode());
         }
     }
-
 
     private static void validateContactChannels(List<Client.ContactChannel> channels, List<String> errors) {
         if (channels == null || channels.isEmpty()) {
@@ -164,12 +149,12 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
             Client.ContactChannel ch = channels.get(i);
             String prefix = "contact_channels[" + i + "] ";
 
-            if (isBlank(ch.getChannelType())) {
+            if (isBlank(ch.getContactType())) {
                 errors.add(prefix + "channel_type is missing");
                 continue;
             }
 
-            if ("email".equals(ch.getChannelType())) {
+            if ("email".equals(ch.getContactType())) {
                 if (isBlank(ch.getValue())) {
                     errors.add(prefix + "email value is missing");
                 } else if (!EMAIL_PATTERN.matcher(ch.getValue()).matches()) {
@@ -177,7 +162,7 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
                 } else {
                     hasValidEmail = true;
                 }
-            } else if ("phone".equals(ch.getChannelType())) {
+            } else if ("phone".equals(ch.getContactType())) {
                 if (isBlank(ch.getValue())) {
                     errors.add(prefix + "phone value is missing");
                 } else if (!PHONE_PATTERN.matcher(ch.getValue()).matches()) {
@@ -196,7 +181,6 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
         }
     }
 
-
     private static void validateAddressChannels(List<Client.AddressChannel> channels, List<String> errors) {
         if (channels == null || channels.isEmpty()) {
             errors.add("address_channels is empty");
@@ -210,33 +194,32 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
             if (isBlank(ch.getAddressCity())) {
                 errors.add(prefix + "city is missing");
             }
-            if (isBlank(ch.getAddressAddress())) {
-                errors.add(prefix + "address is missing");
+            if (isBlank(ch.getAddressStreet())) {
+                errors.add(prefix + "address_street is missing");
             }
             if (isBlank(ch.getAddressZipCode())) {
                 errors.add(prefix + "zip_code is missing");
             } else if (!ZIP_CODE_PATTERN.matcher(ch.getAddressZipCode()).matches()) {
                 errors.add(prefix + "zip_code invalid format: " + ch.getAddressZipCode());
             }
-            if (isBlank(ch.getAddressCode())) {
-                errors.add(prefix + "address_code is missing");
+            if (isBlank(ch.getCountryCode())) {
+                errors.add(prefix + "country_code is missing");
             }
         }
     }
 
-
     private static void validateCommunicationSubscriptions(
             List<Client.CommunicationSubscription> subs, List<String> errors) {
         if (subs == null) {
-            return; // subscriptions are optional
+            return;
         }
 
         for (int i = 0; i < subs.size(); i++) {
             Client.CommunicationSubscription sub = subs.get(i);
             String prefix = "communication_subscriptions[" + i + "] ";
 
-            if (isBlank(sub.getCommunityCode())) {
-                errors.add(prefix + "community_code is missing");
+            if (isBlank(sub.getCommunicationCode())) {
+                errors.add(prefix + "communication_code is missing");
             }
 
             LocalDate subDate = parseDate(sub.getDateOfSubscription());
@@ -254,7 +237,6 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
             }
         }
     }
-
 
     private static void validateDigitalAccess(Client.DigitalAccess da, List<String> errors) {
         if (da == null) {
@@ -276,19 +258,17 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
 
     private static void validateAccountIndicators(Client.AccountIndicator ind, List<String> errors) {
         if (ind == null) {
-            return; // nullable
+            return;
         }
 
-        if (isBlank(ind.getTypeAccountIndicator())) {
+        if (isBlank(ind.getType())) {
             errors.add("account_indicator type is missing");
-        } else if (!VALID_INDICATOR_TYPES.contains(ind.getTypeAccountIndicator())) {
-            errors.add("account_indicator type invalid: " + ind.getTypeAccountIndicator());
+        } else if (!VALID_INDICATOR_TYPES.contains(ind.getType())) {
+            errors.add("account_indicator type invalid: " + ind.getType());
         }
 
-        if (isBlank(ind.getValueAccountIndicator())) {
-            errors.add("account_indicator value is missing");
-        } else if (!VALID_INDICATOR_VALUES.contains(ind.getValueAccountIndicator())) {
-            errors.add("account_indicator value invalid: " + ind.getValueAccountIndicator());
+        if (ind.getIsActive() == null) {
+            errors.add("account_indicator is_active is missing");
         }
     }
 
@@ -314,7 +294,6 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
         }
     }
 
-
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
     }
@@ -322,7 +301,6 @@ public class ClientValidator implements FlatMapFunction<Client, Client> {
     private static LocalDate parseDate(String date) {
         if (isBlank(date)) return null;
         try {
-            // Handle both "yyyy-MM-dd" and "yyyy-MM-dd HH:mm:ss" formats
             String datePart = date.contains(" ") ? date.split(" ")[0] : date;
             return LocalDate.parse(datePart);
         } catch (DateTimeParseException e) {

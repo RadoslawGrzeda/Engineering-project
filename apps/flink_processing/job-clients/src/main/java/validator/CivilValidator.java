@@ -16,7 +16,7 @@ public class CivilValidator extends SinkValidator<Client> {
     protected List<String> validate(Client client) {
         List<String> errors = new ArrayList<>();
 
-        String civilStatus = client.getAccount().getCivilStatus();
+        String civilStatus = client.getAccount().getCivilStatusCode();
         if (civilStatus == null || civilStatus.isBlank()) {
             errors.add("civil_status is missing");
         } else if (!VALID_CIVIL_STATUSES.contains(civilStatus)) {
@@ -41,8 +41,4 @@ public class CivilValidator extends SinkValidator<Client> {
         return "CIVIL";
     }
 
-    @Override
-    protected Client getRawPayload(Client element) {
-        return element.getAccount().getClient();
-    }
 }

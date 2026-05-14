@@ -13,7 +13,7 @@ public class CustomerIndicatorValidator extends SinkValidator<Client> {
         List<String> errors = new ArrayList<>();
 
         Client.AccountIndicator indicator = client.getAccountIndicators();
-        if (isBlank(indicator.getTypeAccountIndicator())) {
+        if (isBlank(indicator.getType())) {
             errors.add("indicator type is missing");
         }
 
@@ -35,8 +35,5 @@ public class CustomerIndicatorValidator extends SinkValidator<Client> {
         return "CUSTOMER_INDICATOR";
     }
 
-    @Override
-    protected Client getRawPayload(Client element) {
-        return element;
-    }
+
 }

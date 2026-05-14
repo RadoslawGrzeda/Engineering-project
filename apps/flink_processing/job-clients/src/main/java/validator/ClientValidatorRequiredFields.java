@@ -94,9 +94,9 @@ public class ClientValidatorRequiredFields extends ProcessFunction<Client, Clien
                 errors.add("birth_date too old (>100 years)");
             }
         }
-        if (acc.getRegistrationDate() == null) {
+        if (isBlank(acc.getRegistrationDate())) {
             errors.add("registration_date is missing");
-        } else if (parseDate(acc.getRegistrationDate().toString()) == null) {
+        } else if (parseDate(acc.getRegistrationDate()) == null) {
             errors.add("registration_date invalid format: " + acc.getRegistrationDate());
         }
 
@@ -120,12 +120,12 @@ public class ClientValidatorRequiredFields extends ProcessFunction<Client, Clien
             Client.ContactChannel ch = channels.get(i);
             String prefix = "contact_channels[" + i + "] ";
 
-            if (isBlank(ch.getChannelType())) {
+            if (isBlank(ch.getContactType())) {
                 errors.add(prefix + "channel_type is missing");
                 continue;
             }
 
-            if ("email".equals(ch.getChannelType())) {
+            if ("email".equals(ch.getContactType())) {
                 if (isBlank(ch.getValue())) {
                     errors.add(prefix + "email value is missing");
                 } else if (!EMAIL_PATTERN.matcher(ch.getValue()).matches()) {
@@ -133,7 +133,7 @@ public class ClientValidatorRequiredFields extends ProcessFunction<Client, Clien
                 } else {
                     hasValidEmail = true;
                 }
-            } else if ("phone".equals(ch.getChannelType())) {
+            } else if ("phone".equals(ch.getContactType())) {
                 if (!isBlank(ch.getValue()) && !PHONE_PATTERN.matcher(ch.getValue()).matches()) {
                     errors.add(prefix + "phone invalid format: " + ch.getValue());
                 }

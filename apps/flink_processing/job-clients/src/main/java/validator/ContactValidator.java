@@ -18,31 +18,27 @@ public class ContactValidator extends SinkValidator<Client.ContactChannel> {
     private static final List<String> VALID_CONTACT_TYPES =
             List.of("email", "phone", "sms");
 
-    @Override
-    protected Client getRawPayload(Client.ContactChannel element) {
-        return element.getClient();
-    }
 
     @Override
     protected List<String> validate(Client.ContactChannel contact) {
         List<String> errors = new ArrayList<>();
 
-        if (isBlank(contact.getChannelType())) {
+        if (isBlank(contact.getContactType())) {
             errors.add("contact_type is missing");
             return errors;
         }
 
-        if (!VALID_CONTACT_TYPES.contains(contact.getChannelType())) {
-            errors.add("contact_type invalid: " + contact.getChannelType());
+        if (!VALID_CONTACT_TYPES.contains(contact.getContactType())) {
+            errors.add("contact_type invalid: " + contact.getContactType());
         }
 
-        if ("email".equals(contact.getChannelType())) {
+        if ("email".equals(contact.getContactType())) {
             if (isBlank(contact.getValue())) {
                 errors.add("email value is missing");
             } else if (!EMAIL_PATTERN.matcher(contact.getValue()).matches()) {
                 errors.add("email invalid format: " + contact.getValue());
             }
-        } else if ("phone".equals(contact.getChannelType()) || "sms".equals(contact.getChannelType())) {
+        } else if ("phone".equals(contact.getContactType()) || "sms".equals(contact.getContactType())) {
             if (!isBlank(contact.getValue()) && !PHONE_PATTERN.matcher(contact.getValue()).matches()) {
                 errors.add("phone/sms invalid format: " + contact.getValue());
             }
