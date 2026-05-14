@@ -16,7 +16,7 @@ def _dbt_op(task_id: str, select: str) -> DockerOperator:
     return DockerOperator(
         task_id = task_id,
         image = DBT_IMAGE,
-        command = f"run --select {select}{full_refresh_flag} --threads 1 --profiles-dir /dbt",
+        command = f"run --select {select}{full_refresh_flag} --threads 2 --profiles-dir /dbt",
         network_mode = DBT_NETWORK,
         mounts = [
             Mount(source = f"{DBT_PROJECT_HOST_PATH}/models", target = "/dbt/models", type = "bind"),
