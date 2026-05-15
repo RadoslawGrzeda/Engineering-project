@@ -1,0 +1,21 @@
+services:
+  transaction_generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: transaction_generator:latest
+    container_name: transaction_generator
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - traefik_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  traefik_network:
+    external: true

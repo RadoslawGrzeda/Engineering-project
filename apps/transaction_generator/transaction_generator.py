@@ -2,7 +2,7 @@ import json
 import uuid
 import logging
 from datetime import datetime
-from random import randint, choice, uniform, choices
+from random import randint, choice, choices
 from decimal import Decimal, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
@@ -29,14 +29,21 @@ METADATA_COMMENTS = [
 
 class TransactionGenerator:
 
-    def __init__(self, shop_code: str, shop_data: dict, products: list, loyalty_cards: list):
+    def __init__(self, shop_code: str, shop_data: dict, db):
         self.shop_code = shop_code
         self.shop_format = shop_data["format"]
         self.pos_list = shop_data["pos_list"]
         self.printer_list = shop_data["printer_list"]
         self.cashier_list = shop_data["cashier_list"]
-        self.products = products
-        self.loyalty_cards = loyalty_cards
+        self.db = db
+
+    @property
+    def products(self):
+        return self.db.products
+
+    @property
+    def loyalty_cards(self):
+        return self.db.loyalty_cards
 
     @staticmethod
     def _uid():
@@ -47,9 +54,9 @@ class TransactionGenerator:
         now = datetime.now()
         transaction_id = self._uid()
 
-        pos_id = choice(self.pos_list)["pos_id"] if self.pos_list and randint(1, 100) <= 90 else None
-        printer_id = choice(self.printer_list)["printer_id"] if self.printer_list and randint(1, 100) <= 85 else None
-        cashier_id = choice(self.cashier_list)["cashier_id"] if self.cashier_list and randint(1, 100) <= 95 else None
+        pos_id = choice(self.pos_list)["pos_id"] if self.pos_list else None
+        printer_id = choice(self.printer_list)["printer_id"] if self.printer_list else None
+        cashier_id = choice(self.cashier_list)["cashier_id"] if self.cashier_list else None
 
         # 35-40% chance for loyalty card
         identifier_no = None
@@ -101,24 +108,16 @@ class TransactionGenerator:
             else:
                 num_lines = randint(9, 12)
 
-        if not self.products:
-            num_lines = randint(1, 3)
-
         lines = []
-        selected_products = choices(self.products, k=num_lines) if self.products else []
+        selected_products = choices(self.products, k=num_lines)
 
         for i in range(num_lines):
             quantity = self._random_quantity()
 
-            if selected_products:
-                product = selected_products[i]
-                prd_code = product["ean"]
-                price_net = Decimal(str(product["price_net"]))
-                vat_rate = Decimal(str(product["vat_rate"]))
-            else:
-                prd_code = f"EAN{randint(1000000000000, 9999999999999)}"
-                price_net = Decimal(str(round(uniform(0.50, 250.00), 2)))
-                vat_rate = Decimal(choice(["0.05", "0.08", "0.23"]))
+            product = selected_products[i]
+            prd_code = product["ean"]
+            price_net = Decimal(str(product["price_net"]))
+            vat_rate = Decimal(str(product["vat_rate"]))
 
             # per-line discount: 35% chance with loyalty card, 10% without
             discount_pct = Decimal("0")

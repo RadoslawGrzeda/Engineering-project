@@ -28,6 +28,8 @@ SUPER_INTERVAL = (
     float(os.getenv("SUPER_MAX_INTERVAL", "8")),
 )
 
+PRODUCTS_REFRESH_INTERVAL = float(os.getenv("PRODUCTS_REFRESH_INTERVAL", "300"))
+
 
 def run_shop(generator: TransactionGenerator, producer: KafkaProducer, topic: str, interval: tuple):
     shop_code = generator.shop_code
@@ -48,12 +50,26 @@ def run_shop(generator: TransactionGenerator, producer: KafkaProducer, topic: st
         time.sleep(sleep_time)
 
 
+def refresh_products_loop(db: DbProvider, interval: float):
+    logger.info(f"Product refresh thread started — every {interval}s")
+    while True:
+        time.sleep(interval)
+        try:
+            db.refresh_products()
+        except Exception as e:
+            logger.error(f"Failed to refresh products: {e}")
+
+
 def main():
     db = DbProvider()
     shops = db.get_shops()
 
     if not shops:
         logger.error("No active shops found in database. Exiting.")
+        return
+
+    if not db.products:
+        logger.error("No products found in database. Exiting.")
         return
 
     bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
@@ -72,7 +88,7 @@ def main():
             logger.warning(f"[{shop_code}] No POS devices — skipping")
             continue
 
-        generator = TransactionGenerator(shop_code, shop_data, db.products, db.loyalty_cards)
+        generator = TransactionGenerator(shop_code, shop_data, db)
         interval = HIPER_INTERVAL if shop_data["format"] == "HIPER" else SUPER_INTERVAL
 
         t = threading.Thread(
@@ -83,6 +99,14 @@ def main():
         )
         threads.append(t)
         t.start()
+
+    refresh_thread = threading.Thread(
+        target=refresh_products_loop,
+        args=(db, PRODUCTS_REFRESH_INTERVAL),
+        name="product-refresh",
+        daemon=True,
+    )
+    refresh_thread.start()
 
     logger.info(f"All {len(threads)} shop threads started. Press Ctrl+C to stop.")
 

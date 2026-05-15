@@ -51,8 +51,8 @@ class DbProvider:
             SELECT s.site_unique_code,
                    sf.site_format_unique_code AS format
             FROM store.site s
-            JOIN store.site_info si ON s.site_unique_code = si.site_unique_code AND si.site_status_code = 'ACTIVE' AND si.is_current = TRUE
-            JOIN store.site_format sf ON s.site_unique_code = sf.site_unique_code AND sf.is_current = TRUE
+            JOIN store.site_info si ON s.site_unique_code = si.site_unique_code AND si.site_status_code = 'ACTIVE'
+            JOIN store.site_format sf ON s.site_unique_code = sf.site_unique_code
         """)
         for row in cur.fetchall():
             self.shops[row["site_unique_code"]] = {
@@ -64,7 +64,7 @@ class DbProvider:
 
     def _load_pos(self, cur):
         cur.execute("""
-            SELECT pos_id, pos_serial_number, shop_id
+            SELECT pos_id, shop_id
             FROM transaction.pos
             WHERE is_current = TRUE
         """)
@@ -73,12 +73,11 @@ class DbProvider:
             if shop_id in self.shops:
                 self.shops[shop_id]["pos_list"].append({
                     "pos_id": row["pos_id"],
-                    "pos_serial_number": row["pos_serial_number"],
                 })
 
     def _load_printers(self, cur):
         cur.execute("""
-            SELECT printer_id, printer_serial_number, shop_id
+            SELECT printer_id, shop_id
             FROM transaction.printer
             WHERE is_current = TRUE
         """)
@@ -87,7 +86,6 @@ class DbProvider:
             if shop_id in self.shops:
                 self.shops[shop_id]["printer_list"].append({
                     "printer_id": row["printer_id"],
-                    "printer_serial_number": row["printer_serial_number"],
                 })
 
     def _load_cashiers(self, cur):
@@ -104,9 +102,11 @@ class DbProvider:
 
     def _load_products(self, cur):
         cur.execute("""
-            SELECT p.art_key, pi.ean, pi.price_net, pi.price_gross, pi.vat_rate
+            SELECT DISTINCT ON (p.art_key) p.art_key, pi.ean, pi.price_net, pi.price_gross, pi.vat_rate
             FROM product.product p
-            JOIN product.pos_information pi ON p.art_key = pi.art_key AND pi.is_current = TRUE
+            JOIN product.pos_information pi ON p.art_key = pi.art_key
+            WHERE pi.valid_from <= CURRENT_DATE
+            ORDER BY p.art_key, pi.valid_from DESC
         """)
         self.products = [dict(row) for row in cur.fetchall()]
 
@@ -114,7 +114,6 @@ class DbProvider:
         cur.execute("""
             SELECT identifier_id
             FROM client.loyalty_status
-            WHERE end_date >= CURRENT_DATE OR end_date IS NULL
         """)
         self.loyalty_cards = [row["identifier_id"] for row in cur.fetchall()]
 
@@ -126,3 +125,15 @@ class DbProvider:
         self.products = []
         self.loyalty_cards = []
         self._load_all()
+
+    def refresh_products(self):
+        conn = self._get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                self._load_products(cur)
+        finally:
+            conn.close()
+        if not self.products:
+            logger.warning("Product refresh returned 0 products from database")
+        else:
+            logger.info(f"Refreshed products from DB: {len(self.products)} products")
