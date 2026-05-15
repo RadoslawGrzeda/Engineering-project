@@ -1,0 +1,14 @@
+services:
+  kafka-minio-consumer:
+    build:
+      context: ..
+      dockerfile: kafka_minio_consumer/Dockerfile
+    env_file:
+      - .env
+    networks:
+      - traefik_network
+    restart: unless-stopped
+
+networks:
+  traefik_network:
+    external: true
