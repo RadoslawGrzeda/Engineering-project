@@ -1,6 +1,7 @@
 package deserializer;
 
 import dto.Client;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -26,12 +27,29 @@ public class ClientDeserializer implements DeserializationSchema<Client> {
             objectMapper = new ObjectMapper();
         }
         try {
-            Client client = objectMapper.readValue(message, Client.class);
-            if (client != null && client.getAccount() != null) {
-                MDC.put("correlation_id", client.getAccount().getCorrelation_id());
+            JsonNode root = objectMapper.readTree(message);
+            JsonNode payloadNode = (root.has("payload") && root.get("payload").isObject())
+                    ? root.get("payload")
+                    : root;
+
+            Client client = objectMapper.treeToValue(payloadNode, Client.class);
+
+            if (client != null) {
+                client.setEventId(asTextOrNull(root, "event_id"));
+                client.setEventType(asTextOrNull(root, "event_type"));
+                client.setEventTimestamp(asTextOrNull(root, "event_timestamp"));
+                client.setUpdateAction(asTextOrNull(root, "update_action"));
+                client.setSourceSystem(asTextOrNull(root, "source_system"));
+                client.setSchemaVersion(asTextOrNull(root, "schema_version"));
+
+                if (client.getAccount() != null) {
+                    MDC.put("correlation_id", client.getAccount().getCorrelation_id());
+                }
             }
             MDC.put("service", "flink-clients");
-            LOG.info("Deserialized client message");
+            LOG.info("Deserialized client message (event_type={}, update_action={})",
+                    asTextOrNull(root, "event_type"),
+                    asTextOrNull(root, "update_action"));
             MDC.clear();
             return client;
         } catch (Exception e) {
@@ -40,6 +58,11 @@ public class ClientDeserializer implements DeserializationSchema<Client> {
             MDC.clear();
             return null;
         }
+    }
+
+    private static String asTextOrNull(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        return (v == null || v.isNull()) ? null : v.asText();
     }
 
     @Override
