@@ -1,0 +1,22 @@
+table: site_format
+description: "Format sklepu (HYPER/SUPER) z historyzacja zmian."
+
+sla:
+  freshness: when_file_arrives
+  owner: procurement-team
+  max_delay_hours: 72
+
+change_policy:
+  review_required: true
+  notify:
+    - procurement-team
+    - data-team
+  breaking_changes: require_approval
+
+columns:
+  - name: site_unique_code
+    type: string
+    nullable: false
+  - name: site_format_unique_code
+    type: string
+    nullable: false

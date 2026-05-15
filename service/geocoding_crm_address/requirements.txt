@@ -1,0 +1,5 @@
+kafka-python
+psycopg2-binary
+python-dotenv
+geopy
+python-json-logger>=2.0.0

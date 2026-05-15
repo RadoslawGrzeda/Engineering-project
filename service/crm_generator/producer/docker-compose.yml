@@ -1,0 +1,24 @@
+services:
+  crm_producer:
+    build:
+      context: ../..
+      dockerfile: crm_generator/Dockerfile
+    image: crm_generator:latest
+    container_name: crm_producer
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: python -m service.crm_generator.producer.crm_producer
+    volumes:
+      - ../identifier.csv:/app/service/crm_generator/identifier.csv
+    networks:
+      - traefik_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  traefik_network:
+    external: true
