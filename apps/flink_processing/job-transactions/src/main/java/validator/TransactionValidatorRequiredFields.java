@@ -48,10 +48,13 @@ public class TransactionValidatorRequiredFields extends ProcessFunction<Transact
             List.of("PLN", "EUR", "CZK", "USD");
 
     private static final List<String> VALID_PAYMENT_METHODS =
-            List.of("CARD", "CASH", "BLIK", "TRANSFER");
+            List.of("CARD", "CASH", "MOBILE", "VOUCHER");
 
     private static final List<String> VALID_STATUSES =
-            List.of("PENDING", "COMPLETED", "CANCELLED", "FAILED");
+            List.of("PENDING", "COMPLETED", "CANCELLED", "FAILED", "FINALIZED");
+
+    private static final List<String> VALID_PAYMENT_STATUSES =
+            List.of("PENDING", "COMPLETED", "CANCELLED", "FAILED", "FINALIZED", "REFUNDED");
 
     public static List<String> validate(Transaction tx) {
         List<String> errors = new ArrayList<>();
@@ -246,7 +249,7 @@ public class TransactionValidatorRequiredFields extends ProcessFunction<Transact
 
         if (isBlank(status.getPaymentStatus())) {
             errors.add("payment_status is missing");
-        } else if (!VALID_STATUSES.contains(status.getPaymentStatus())) {
+        } else if (!VALID_PAYMENT_STATUSES.contains(status.getPaymentStatus())) {
             errors.add("payment_status invalid: " + status.getPaymentStatus());
         }
 
