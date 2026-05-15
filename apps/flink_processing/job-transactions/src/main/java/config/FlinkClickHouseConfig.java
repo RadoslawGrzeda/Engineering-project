@@ -10,11 +10,11 @@ public class FlinkClickHouseConfig {
 
     public static JdbcExecutionOptions execOption() {
         return JdbcExecutionOptions.builder()
-               .withBatchSize(1000)
-               .withBatchIntervalMs(200)
-               .withMaxRetries(5)
-               .build();
-   }
+                .withBatchSize(1000)
+                .withBatchIntervalMs(200)
+                .withMaxRetries(5)
+                .build();
+    }
 
     public static JdbcConnectionOptions connOption(){
             return new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
@@ -23,5 +23,5 @@ public class FlinkClickHouseConfig {
             .withUsername(CLICKHOUSE_USER)
             .withPassword(CLICKHOUSE_PASSWORD)
             .build();
-   }
+    }
 }

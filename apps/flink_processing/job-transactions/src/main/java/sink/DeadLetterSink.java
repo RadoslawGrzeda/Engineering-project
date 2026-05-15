@@ -11,12 +11,9 @@ import java.sql.SQLException;
 public class DeadLetterSink implements JdbcStatementBuilder<DeadLetter> {
 
     public static final String SQL =
-            "INSERT INTO transaction.dead_letter" +
+            "INSERT INTO meta.transaction_dead_letter" +
             " (transaction_id, correlation_id, transaction_date, location_code, error_code, error_message, raw_payload)" +
             " VALUES (?, ?, ?, ?, ?, ?, ?::jsonb)";
-
-
-
 
     @Override
     public void accept(PreparedStatement ps, DeadLetter dl) throws SQLException {

@@ -29,7 +29,7 @@ public class FactTransactionSink extends ProcessFunction<Transaction, Transactio
             new OutputTag<>("fact_transaction_dead_letter", TypeInformation.of(DeadLetter.class));
 
     private static final String SQL =
-            "INSERT INTO gold.fact_transactions " +
+            "INSERT INTO marts_transaction.fact_transactions " +
             "(transaction_id, transaction_date, location_code,identifier_no, pos_id, cashier_id, currency_code,  " +
             " payment_method, total_net_value, total_gross_value, discount_value, " +
             " status, payment_status, cancelled, " +
@@ -40,6 +40,7 @@ public class FactTransactionSink extends ProcessFunction<Transaction, Transactio
 
     private transient Connection connection;
     private transient PreparedStatement stmt;
+
 
     @Override
     public void open(Configuration parameters) throws Exception {
