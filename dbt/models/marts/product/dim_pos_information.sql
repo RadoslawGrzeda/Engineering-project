@@ -6,8 +6,8 @@
 
 select
     pos_information_id,
-    art_key,
-    ean,
+    assumeNotNull(art_key) as art_key,
+    assumeNotNull(ean)     as ean,
     vat_rate,
     price_net,
     price_gross,

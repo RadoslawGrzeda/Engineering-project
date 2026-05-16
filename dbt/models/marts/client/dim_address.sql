@@ -11,9 +11,9 @@ select
     option_channel,
     street,
     zip_code,
-    city,
+    city,   
     country,
-    latitude,
-    longitude
+    round(latitude, 4) as latitude,
+    round(longitude, 4) as longitude
 from {{ ref('gold_client_dim_address') }} FINAL
 where is_current = 1

@@ -9,7 +9,6 @@ renamed as (
         person_id,
         country_code as code,
         updated_at,
-        correlation_id,
         correlation_id
     from source_data
 )

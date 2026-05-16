@@ -13,8 +13,8 @@ select
     zip_code,
     city,
     country,
-    latitude,
-    longitude,
+    round(latitude, 4) as latitude,
+    round(longitude, 4) as longitude,
     is_current,
     dbt_valid_from as valid_from,
     dbt_valid_to   as valid_to
