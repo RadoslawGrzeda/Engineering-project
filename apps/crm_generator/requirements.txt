@@ -1,6 +1,0 @@
-kafka-python
-psycopg2-binary
-python-dotenv
-faker
-pandas
-python-json-logger
