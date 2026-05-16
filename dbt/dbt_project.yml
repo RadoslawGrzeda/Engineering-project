@@ -19,6 +19,9 @@ macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
 
+on-run-start:
+  - "{{ ensure_all_scd_tables() }}"
+
 clean-targets:         # directories to be removed by `dbt clean`
   - "target"
   - "dbt_packages"
@@ -33,7 +36,7 @@ clean-targets:         # directories to be removed by `dbt clean`
 models:
   transform_from_pg:
     silver:
-      +materialized: table
+      +materialized: view
       +schema: silver
     gold:
       +materialized: table
@@ -41,8 +44,16 @@ models:
         +schema: gold_customer
       product:
         +schema: gold_product
-      shop:
-        +schema: gold_shop
+      store:
+        +schema: gold_store
+    marts:
+      +materialized: table
+      product:
+        +schema: marts_product
+      store:
+        +schema: marts_store
+      client:
+        +schema: marts_client
     # Config indicated by + and applies to all files under models/example/
 #    example:
 #      +materialized: view
