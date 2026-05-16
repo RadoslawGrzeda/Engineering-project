@@ -1,8 +1,9 @@
-version: '3.8'
-
 services:
   jobmanager:
-    image: flink:1.20.3-java17
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flink-custom:1.20.3-java17
     container_name: flink-jobmanager
     restart: always
     ports:
@@ -29,12 +30,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_URL: ${POSTGRES_URL}
     volumes:
-      - ../apps/flink_processing/job-clients/target:/opt/flink/usrlib/clients
-      - ../apps/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
-      - ./conf/log4j-console.properties:/opt/flink/conf/log4j-console.properties
-      - ./conf/logTemplate.json:/opt/flink/conf/logTemplate.json
-      - ./conf/log4j-layout-template-json-2.24.3.jar:/opt/flink/lib/log4j-layout-template-json-2.24.3.jar
-      - ./plugins/flink-s3-fs-hadoop-1.20.3.jar:/opt/flink/plugins/s3-fs-hadoop/flink-s3-fs-hadoop-1.20.3.jar
+      - ../service/flink_processing/job-clients/target:/opt/flink/usrlib/clients
+      - ../service/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
     networks:
       - traefik_network
     logging:
@@ -44,7 +41,7 @@ services:
         max-file: "3"
 
   taskmanager:
-    image: flink:1.20.3-java17
+    image: flink-custom:1.20.3-java17
     container_name: flink-taskmanager
     restart: always
     depends_on:
@@ -66,12 +63,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_URL: ${POSTGRES_URL}
     volumes:
-      - ../apps/flink_processing/job-clients/target:/opt/flink/usrlib/clients
-      - ../apps/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
-      - ./conf/log4j-console.properties:/opt/flink/conf/log4j-console.properties
-      - ./conf/logTemplate.json:/opt/flink/conf/logTemplate.json
-      - ./conf/log4j-layout-template-json-2.24.3.jar:/opt/flink/lib/log4j-layout-template-json-2.24.3.jar
-      - ./plugins/flink-s3-fs-hadoop-1.20.3.jar:/opt/flink/plugins/s3-fs-hadoop/flink-s3-fs-hadoop-1.20.3.jar
+      - ../service/flink_processing/job-clients/target:/opt/flink/usrlib/clients
+      - ../service/flink_processing/job-transactions/target:/opt/flink/usrlib/transactions
     networks:
       - traefik_network
     logging:
