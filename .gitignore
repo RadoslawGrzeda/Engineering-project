@@ -20,7 +20,7 @@ venv/
 target/
 *.class
 *.jar
-!apps/flink_processing/**/lib/*.jar
+!service/flink_processing/**/lib/*.jar
 !flink/plugins/**/*.jar
 
 # IDE
@@ -35,7 +35,8 @@ target/
 Thumbs.db
 
 # Project-specific
-apps/load_file_develop/data/
+service/load_file_develop/data/
+backup/data/
 .claude
 
 # Logs

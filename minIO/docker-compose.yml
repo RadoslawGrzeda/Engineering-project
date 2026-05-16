@@ -15,7 +15,7 @@ services:
         MINIO_ROOT_USER: ${MINIO_USER}
         MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
         MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: "on"
-        MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: "broker:9094"
+        MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: "broker1:9094,broker2:9094,broker3:9094"
         MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY: "minio-events"
 #        MINIO_BROWSER_REDIRECT_URL: https://minio-ui.${DOMAIN_NAME}
 #        MINIO_ROOT_USER: ${minio_login}
@@ -41,6 +41,7 @@ services:
       - "traefik.http.routers.minio-console.tls.certresolver=mytlschallenge"
       - "traefik.http.routers.minio-console.service=minio-console-svc"
       - "traefik.http.services.minio-console-svc.loadbalancer.server.port=9001"
+      - "traefik.http.routers.minio-console.middlewares=keycloak-auth@docker"
 networks:
   traefik_network:
     external: true
