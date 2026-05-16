@@ -2,7 +2,7 @@ CREATE DATABASE IF NOT EXISTS bronze;
 CREATE DATABASE IF NOT EXISTS silver;
 CREATE DATABASE IF NOT EXISTS gold;
 
-CREATE TABLE IF NOT EXISTS gold.fact_transactions
+CREATE TABLE IF NOT EXISTS marts_transaction.fact_transactions
 (
     transaction_id    String,
     transaction_date  DateTime64(6, 'UTC'),
