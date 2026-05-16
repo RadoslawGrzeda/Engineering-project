@@ -1,3 +1,73 @@
+filebeat.inputs:
+  - type: log
+    id: airflow-task-logs
+    enabled: true
+    paths:
+      - /airflow-logs/dag_id=*/run_id=*/task_id=*/attempt=*.log
+    fields:
+      service: airflow
+      log_type: task
+    fields_under_root: true
+    multiline.pattern: '^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'
+    multiline.negate: true
+    multiline.match: after
+    processors:
+      - script:
+          lang: javascript
+          id: strip_airflow_ansi
+          source: >
+            function process(event) {
+              var msg = event.Get("message");
+              if (msg) {
+                event.Put("message", msg.replace(/\x1b\[[0-9;]*m/g, ""));
+              }
+              return event;
+            }
+      - dissect:
+          tokenizer: '[%{airflow.time}] {%{airflow.caller}} %{log.level} - %{airflow.msg}'
+          field: "message"
+          target_prefix: ""
+          ignore_failure: true
+      - dissect:
+          tokenizer: '/airflow-logs/dag_id=%{airflow.dag_id}/run_id=%{airflow.run_id}/task_id=%{airflow.task_id}/attempt=%{airflow.attempt}.log'
+          field: "log.file.path"
+          target_prefix: ""
+          ignore_failure: true
+      - script:
+          lang: javascript
+          id: reclassify_dbt
+          source: >
+            function process(event) {
+              var dag = event.Get("airflow.dag_id");
+              var msg = event.Get("airflow.msg");
+              if (!dag || !msg || dag.indexOf("dbt_") !== 0) {
+                return event;
+              }
+              var m = /^(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*([\s\S]*)$/.exec(msg);
+              if (!m) {
+                return event;
+              }
+              var body = m[2];
+              event.Put("service", "dbt");
+              event.Put("log_type", "dbt");
+              event.Put("dbt.time", m[1]);
+              event.Put("dbt.msg", body);
+              var level = "info";
+              if (/\[ERROR in |\bERROR=[1-9]|(Database|Compilation|Runtime|Parsing) Error|Encountered an error|\[ERROR\]/.test(body)) {
+                level = "error";
+              } else if (/\[WARNING\]|\bWARN=[1-9]|\[WARN in /.test(body)) {
+                level = "warn";
+              }
+              event.Put("log.level", level);
+              return event;
+            }
+      - timestamp:
+          field: airflow.time
+          layouts:
+            - '2006-01-02T15:04:05.999-0700'
+          ignore_missing: true
+          ignore_failure: true
+
 filebeat.autodiscover:
   providers:
     - type: docker
@@ -5,16 +75,30 @@ filebeat.autodiscover:
       templates:
         - condition:
             or:
+              - equals:
+                  docker.container.name: "flink-jobmanager"
+              - equals:
+                  docker.container.name: "flink-taskmanager"
               - contains:
-                  docker.container.name: "kafka-minio-consumer"
-              - equals:
-                  docker.container.name: "streamlit"
-              - equals:
                   docker.container.name: "broker"
+              - equals:
+                  docker.container.name: "redpanda-console"
               - equals:
                   docker.container.name: "minio"
               - equals:
-                  docker.container.name: "redpanda-console"
+                  docker.container.name: "clickhouse"
+              - equals:
+                  docker.container.name: "streamlit"
+              - equals:
+                  docker.container.name: "kafka-minio-consumer"
+              - equals:
+                  docker.container.name: "geocoding_crm_address"
+              - contains:
+                  docker.container.name: "airflow"
+              - equals:
+                  docker.container.name: "keycloak"
+              - equals:
+                  docker.container.name: "traefik"
           config:
             - type: container
               paths:

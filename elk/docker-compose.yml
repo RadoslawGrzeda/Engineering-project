@@ -30,6 +30,7 @@ services:
     container_name: kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_PUBLICBASEURL=https://kibana.radoslawgrzeda.com
     ports:
       - "5601:5601"
     networks:
@@ -38,6 +39,16 @@ services:
       elasticsearch:
         condition: service_healthy
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_network"
+      - "traefik.http.routers.kibana.rule=Host(`kibana.radoslawgrzeda.com`)"
+      - "traefik.http.routers.kibana.entrypoints=websecure"
+      - "traefik.http.routers.kibana.tls=true"
+      - "traefik.http.routers.kibana.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.kibana.service=kibana-svc"
+      - "traefik.http.services.kibana-svc.loadbalancer.server.port=5601"
+      - "traefik.http.routers.kibana.middlewares=keycloak-auth@docker"
     logging:
       driver: "json-file"
       options:
@@ -54,6 +65,7 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - filebeat_data:/usr/share/filebeat/data
+      - airflow_logs:/airflow-logs:ro
     networks:
       - traefik_network
     depends_on:
@@ -69,6 +81,9 @@ services:
 volumes:
   es_data:
   filebeat_data:
+  airflow_logs:
+    external: true
+    name: airflow_airflow_logs
 
 networks:
   traefik_network:
