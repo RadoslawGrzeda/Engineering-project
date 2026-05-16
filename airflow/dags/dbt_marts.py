@@ -14,7 +14,7 @@ def _dbt_op(task_id: str, select: str) -> DockerOperator:
     return DockerOperator(
         task_id=task_id,
         image=DBT_IMAGE,
-        command=f"run --select {select} --threads 1 --full-refresh --profiles-dir /dbt",
+        command=f"run --select {select} --threads 2 --full-refresh --profiles-dir /dbt",
         network_mode=DBT_NETWORK,
         mounts=[
             Mount(source=f"{DBT_PROJECT_HOST_PATH}/models", target="/dbt/models", type="bind"),
@@ -54,14 +54,14 @@ def dbt_marts():
 
     @task_group(group_id="product")
     def product_marts():
-        _dbt_op("mart_product",              "path:models/marts/product/mart_product.sql")
-        _dbt_op("mart_product_history",      "path:models/marts/product/mart_product_history.sql")
-        _dbt_op("mart_chief",                "path:models/marts/product/mart_chief.sql")
-        _dbt_op("mart_chief_history",        "path:models/marts/product/mart_chief_history.sql")
-        _dbt_op("mart_pos_information",      "path:models/marts/product/mart_pos_information.sql")
-        _dbt_op("mart_pos_information_history", "path:models/marts/product/mart_pos_information_history.sql")
-        _dbt_op("mart_segment_chief",        "path:models/marts/product/mart_segment_chief.sql")
-        _dbt_op("mart_segment_chief_history","path:models/marts/product/mart_segment_chief_history.sql")
+        _dbt_op("dim_product",              "path:models/marts/product/dim_product.sql")
+        _dbt_op("dim_product_history",      "path:models/marts/product/dim_product_history.sql")
+        _dbt_op("dim_chief",                "path:models/marts/product/dim_chief.sql")
+        _dbt_op("dim_chief_history",        "path:models/marts/product/dim_chief_history.sql")
+        _dbt_op("dim_pos_information",      "path:models/marts/product/dim_pos_information.sql")
+        _dbt_op("dim_pos_information_history", "path:models/marts/product/dim_pos_information_history.sql")
+        _dbt_op("dim_segment_chief",        "path:models/marts/product/dim_segment_chief.sql")
+        _dbt_op("dim_segment_chief_history","path:models/marts/product/dim_segment_chief_history.sql")
 
     @task_group(group_id='client')
     def client_marts():

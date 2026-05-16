@@ -23,14 +23,14 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__CORE__DEFAULT_TIMEZONE=Europe/Warsaw
       - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
-      - PYTHONPATH=/opt/airflow:/opt/airflow/apps/load_file_develop
+      - PYTHONPATH=/opt/airflow:/opt/airflow/service/load_file_develop
       - _PIP_ADDITIONAL_REQUIREMENTS=python-json-logger pydantic sqlalchemy psycopg2-binary pandas minio python-dotenv structlog apache-airflow-providers-docker clickhouse-connect
     env_file:
       - .env
     volumes:
       - ./dags:/opt/airflow/dags
       - ./config:/opt/airflow/config
-      - ../apps:/opt/airflow/apps
+      - ../service:/opt/airflow/service
       - airflow_logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -58,14 +58,14 @@ services:
       - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__CORE__DEFAULT_TIMEZONE=Europe/Warsaw
-      - PYTHONPATH=/opt/airflow:/opt/airflow/apps/load_file_develop
+      - PYTHONPATH=/opt/airflow:/opt/airflow/service/load_file_develop
       - _PIP_ADDITIONAL_REQUIREMENTS=python-json-logger pydantic sqlalchemy psycopg2-binary pandas minio python-dotenv structlog apache-airflow-providers-docker clickhouse-connect
     env_file:
       - .env
     volumes:
       - ./dags:/opt/airflow/dags
       - ./config:/opt/airflow/config
-      - ../apps:/opt/airflow/apps
+      - ../service:/opt/airflow/service
       - airflow_logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
