@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  postgres_ods:
+    image: postgres:16
+    restart: always
+    shm_size: 1536mb
+    command: postgres -c config_file=/etc/postgresql/custom-postgres.conf
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ods_db_data:/var/lib/postgresql/data
+      - ./custom-postgres.conf:/etc/postgresql/custom-postgres.conf:ro
+    networks:
+      - traefik_network
+
+networks:
+  traefik_network:
+    external: true
+
+volumes:
+  ods_db_data:
