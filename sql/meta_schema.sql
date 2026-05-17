@@ -130,3 +130,30 @@ CREATE INDEX idx_client_dead_letter_raw_payload ON meta.client_dead_letter USING
 CREATE TRIGGER trg_client_dead_letter_updated_at
     BEFORE UPDATE ON meta.client_dead_letter
     FOR EACH ROW EXECUTE FUNCTION meta.set_updated_at();
+
+
+CREATE TABLE meta.transaction_dead_letter
+(
+    id                 SERIAL PRIMARY KEY,
+    inserted_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    error_code         VARCHAR(100),
+    error_message      TEXT,
+    transaction_id     VARCHAR(50),
+    correlation_id     VARCHAR(100),
+    transaction_date   TIMESTAMP,
+    location_code      VARCHAR(50),
+    raw_payload        JSONB NOT NULL,
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+);
+
+CREATE INDEX idx_tx_dlq_transaction_id ON meta.transaction_dead_letter (transaction_id);
+CREATE INDEX idx_tx_dlq_correlation_id ON meta.dead_letter (correlation_id);
+-- CREATE INDEX idx_tx_dlq_status ON meta.transaction_dead_letter (status);
+CREATE INDEX idx_tx_dlq_inserted_at ON meta.transaction_dead_letter (inserted_at);
+CREATE INDEX idx_tx_dlq_location_code ON meta.transaction_dead_letter (location_code);
+CREATE INDEX idx_tx_dlq_raw_payload ON meta.transaction_dead_letter USING GIN (raw_payload);
+
+CREATE TRIGGER trg_transaction_dead_letter_updated_at
+    BEFORE UPDATE ON meta.transaction_dead_letter
+    FOR EACH ROW EXECUTE FUNCTION meta.set_updated_at();
