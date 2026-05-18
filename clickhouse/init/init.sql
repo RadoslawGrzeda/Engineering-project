@@ -1,7 +1,7 @@
 CREATE DATABASE IF NOT EXISTS bronze;
 CREATE DATABASE IF NOT EXISTS silver;
 CREATE DATABASE IF NOT EXISTS gold;
-
+CREATE DATABASE IF NOT EXISTS marts_transaction;
 CREATE TABLE IF NOT EXISTS marts_transaction.fact_transactions
 (
     transaction_id    String,
