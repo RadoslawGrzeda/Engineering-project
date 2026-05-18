@@ -7,8 +7,8 @@ services:
       networks:
         - traefik_network
       ports:
-        - "9000:9000" # Port API
-        - "9001:9001" # Port konsoli UI
+        - "127.0.0.1:9000:9000"
+        - "127.0.0.1:9001:9001"
       volumes:
         - minio_data:/data
       environment:
@@ -17,10 +17,7 @@ services:
         MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: "on"
         MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: "broker1:9094,broker2:9094,broker3:9094"
         MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY: "minio-events"
-#        MINIO_BROWSER_REDIRECT_URL: https://minio-ui.${DOMAIN_NAME}
-#        MINIO_ROOT_USER: ${minio_login}
-#        MINIO_ROOT_PASSWORD: ${minio_password}
-#        MINIO_BROWSER_REDIRECT_URL: https://minio-ui.${DOMAIN_NAME}
+        MINIO_BROWSER_REDIRECT_URL: https://minio-ui.${DOMAIN_NAME}
       command: server /data --console-address ":9001"
       labels:
       - "traefik.enable=true"
@@ -41,7 +38,6 @@ services:
       - "traefik.http.routers.minio-console.tls.certresolver=mytlschallenge"
       - "traefik.http.routers.minio-console.service=minio-console-svc"
       - "traefik.http.services.minio-console-svc.loadbalancer.server.port=9001"
-      - "traefik.http.routers.minio-console.middlewares=keycloak-auth@docker"
 networks:
   traefik_network:
     external: true
