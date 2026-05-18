@@ -42,7 +42,7 @@ services:
       - "traefik.http.routers.minio-backup-console.tls.certresolver=mytlschallenge"
       - "traefik.http.routers.minio-backup-console.service=minio-backup-console-svc"
       - "traefik.http.services.minio-backup-console-svc.loadbalancer.server.port=9001"
-      - "traefik.http.routers.minio-backup-console.middlewares=keycloak-auth@docker"
+      
 
   mc-mirror:
     image: minio/mc:latest

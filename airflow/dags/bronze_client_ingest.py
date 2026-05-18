@@ -1,4 +1,4 @@
 # airflow dag
 from ingest_factory import IngestFactory
 
-dag = IngestFactory(dag_id='bronze_client_ingest',dbt_dag_id='dbt_transform_client', config_file='client_bronze_tables.yaml',schedule=None,tags=['bronze','client']).build_dag()
+dag = IngestFactory(dag_id='bronze_client_ingest',dbt_dag_id='dbt_transform_client', config_file='client_bronze_tables.yaml',schedule="@hourly",tags=['bronze','client']).build_dag()
