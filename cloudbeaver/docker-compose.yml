@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    restart: always
+    entrypoint: ["/bin/sh", "/init/entrypoint.sh"]
+    ports:
+      - "8978:8978"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+    volumes:
+      - cloudbeaver_workspace:/opt/cloudbeaver/workspace
+      - ./entrypoint.sh:/init/entrypoint.sh:ro
+      - ./data-sources.json.tpl:/init/data-sources.json.tpl:ro
+    networks:
+      - traefik_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cloudbeaver.rule=Host(`cloudbeaver.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.cloudbeaver.entrypoints=websecure"
+      - "traefik.http.routers.cloudbeaver.tls=true"
+      - "traefik.http.routers.cloudbeaver.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.cloudbeaver.loadbalancer.server.port=8978"
+networks:
+  traefik_network:
+    external: true
+
+volumes:
+  cloudbeaver_workspace:
